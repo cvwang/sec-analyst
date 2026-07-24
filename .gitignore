@@ -5,3 +5,15 @@ agent/config.py
 __pycache__/
 *.pyc
 .DS_Store
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+
+# Pytest / Cache
+.pytest_cache/
+*.log

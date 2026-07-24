@@ -1,4 +1,4 @@
-# SEC EDGAR Natural Language Analyst (AI in 5 Days & Capstone Foundation)
+# SEC EDGAR Natural Language Analyst (ai-in-5-days & Capstone Foundation)
 
 An agentic financial analyst system designed to automate period-over-period financial variance analysis (Revenue, Operating Income, Net Income) and perform longitudinal thematic tracking across SEC 10-K filings.
 

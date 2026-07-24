@@ -1,0 +1,67 @@
+[
+  {
+    "case_id": "test_001_aapl_revenue",
+    "ticker": "AAPL",
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue",
+    "current_value": 383285.0,
+    "prior_value": 394328.0,
+    "expected_absolute_change": -11043.0,
+    "expected_percentage_change": -2.8,
+    "expected_direction": "Decrease",
+    "expected_grounding_keyword": "macroeconomic"
+  },
+  {
+    "case_id": "test_002_aapl_net_income",
+    "ticker": "AAPL",
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Net Income",
+    "current_value": 96995.0,
+    "prior_value": 99803.0,
+    "expected_absolute_change": -2808.0,
+    "expected_percentage_change": -2.81,
+    "expected_direction": "Decrease",
+    "expected_grounding_keyword": "net sales"
+  },
+  {
+    "case_id": "test_003_msft_revenue",
+    "ticker": "MSFT",
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue",
+    "current_value": 211915.0,
+    "prior_value": 198270.0,
+    "expected_absolute_change": 13645.0,
+    "expected_percentage_change": 6.88,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "Intelligent Cloud"
+  },
+  {
+    "case_id": "test_004_msft_operating_income",
+    "ticker": "MSFT",
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Operating Income",
+    "current_value": 88523.0,
+    "prior_value": 83383.0,
+    "expected_absolute_change": 5140.0,
+    "expected_percentage_change": 6.16,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "cloud"
+  },
+  {
+    "case_id": "test_005_nvda_revenue",
+    "ticker": "NVDA",
+    "current_year": 2024,
+    "prior_year": 2023,
+    "metric_name": "Revenue",
+    "current_value": 60922.0,
+    "prior_value": 26974.0,
+    "expected_absolute_change": 33948.0,
+    "expected_percentage_change": 125.85,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "Data Center"
+  }
+]
