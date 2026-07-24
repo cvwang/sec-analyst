@@ -10,6 +10,8 @@ __pycache__/
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfvars
+!.tfvars.example
 crash.log
 override.tf
 override.tf.json

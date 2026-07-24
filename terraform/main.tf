@@ -13,9 +13,35 @@ provider "google" {
   region  = var.region
 }
 
+# Required GCP APIs
+resource "google_project_service" "secretmanager_api" {
+  project            = var.project_id
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "cloudrun_api" {
+  project            = var.project_id
+  service            = "run.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "storage_api" {
+  project            = var.project_id
+  service            = "storage.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "aiplatform_api" {
+  project            = var.project_id
+  service            = "aiplatform.googleapis.com"
+  disable_on_destroy = false
+}
+
 # Cloud Storage Bucket for SEC Filing Cache & Export Reports
 resource "google_storage_bucket" "sec_filings_bucket" {
   name                     = "${var.project_id}-sec-reports"
+  project                  = var.project_id
   location                 = var.region
   force_destroy            = false
   public_access_prevention = "enforced"
@@ -25,11 +51,14 @@ resource "google_storage_bucket" "sec_filings_bucket" {
   versioning {
     enabled = true
   }
+
+  depends_on = [google_project_service.storage_api]
 }
 
 # Secret Manager Secret for Gemini API Credentials / App Keys
 resource "google_secret_manager_secret" "api_key_secret" {
   secret_id = "sec-edgar-agent-api-key"
+  project   = var.project_id
 
   replication {
     user_managed {
@@ -38,6 +67,8 @@ resource "google_secret_manager_secret" "api_key_secret" {
       }
     }
   }
+
+  depends_on = [google_project_service.secretmanager_api]
 }
 
 resource "google_secret_manager_secret_version" "api_key_secret_version" {
@@ -49,6 +80,7 @@ resource "google_secret_manager_secret_version" "api_key_secret_version" {
 resource "google_cloud_run_v2_service" "agent_service" {
   name     = var.service_name
   location = var.region
+  project  = var.project_id
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
@@ -85,4 +117,6 @@ resource "google_cloud_run_v2_service" "agent_service" {
       max_instance_count = 5
     }
   }
+
+  depends_on = [google_project_service.cloudrun_api]
 }

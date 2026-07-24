@@ -1,0 +1,3 @@
+project_id   = "fde-sec-edgar-sandbox-dev"
+region       = "us-central1"
+service_name = "sec-edgar-analyst-agent"
