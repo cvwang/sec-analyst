@@ -16,6 +16,7 @@ crash.log
 override.tf
 override.tf.json
 
-# Pytest / Cache
+# Pytest / Cache / Memory
 .pytest_cache/
 *.log
+agent_sessions.json

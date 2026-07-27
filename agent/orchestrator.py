@@ -1,13 +1,17 @@
-"""ADK Root Orchestrator and Financial Analyst Agent supervising financial variance analysis with live Vertex AI model calls."""
+"""ADK Root Orchestrator and Financial Analyst Agent supervising financial variance analysis with memory, caching, and model routing."""
 
+import asyncio
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from google import genai
 from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
 from agent.tools.calculation_engine import calculate_financial_variance, VarianceRequest, VarianceResult
 from agent.tools.sec_retriever import fetch_sec_10k_context, SECContextRequest, SECContextResult
+from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager, CompactedHistory
+from agent.memory.session_store import PersistentSessionStore
+from agent.memory.async_memory import AsyncMemoryManager
 from agent.observability.logging_config import log_tool_execution
 from agent.observability.tracer import trace_span
 
@@ -100,6 +104,7 @@ class FinancialAnalystAgent:
         current_year: int,
         prior_year: int,
         metric_name: str,
+        context_summary: str = "",
     ) -> Dict[str, Any]:
         """Executes full variance analysis workflow and calls Vertex AI Gemini model to synthesize narrative.
 
@@ -108,9 +113,10 @@ class FinancialAnalystAgent:
             current_year: Current fiscal year (e.g., 2023).
             prior_year: Prior fiscal year (e.g., 2022).
             metric_name: Financial metric to analyze ('Revenue', 'Operating Income', 'Net Income').
+            context_summary: Optional compacted conversation summary from previous turns.
 
         Returns:
-            Dictionary containing calculation results, grounding context, and live Vertex AI narrative.
+            Dictionary containing calculation results, grounding context, and narrative.
         """
         # Step 1: Fetch SEC Context for Current Year
         log_tool_execution("fetch_sec_10k_context", "intent", {"ticker": ticker, "fiscal_year": current_year})
@@ -143,9 +149,11 @@ class FinancialAnalystAgent:
         log_tool_execution("calculate_financial_variance", "outcome", calc_res.model_dump(), status="SUCCESS" if calc_res.is_success else "ERROR")
 
         # Step 4: LIVE VERTEX AI GEMINI LLM INVOCATION
+        history_context = f"\nCOMPACTED HISTORY CONTEXT:\n{context_summary}\n" if context_summary else ""
+
         prompt = f"""
 {SYSTEM_CONSTITUTION}
-
+{history_context}
 USER REQUEST: Analyze the period-over-period financial variance for {ticker} ({metric_name}) between FY{prior_year} and FY{current_year}.
 
 DETERMINISTIC CALCULATION TOOL OUTPUT:
@@ -186,7 +194,6 @@ Synthesize an Executive Summary report following the System Constitution. Includ
                     log_tool_execution("vertex_ai_generate_content", "outcome", {"model": model_id, "error": str(err)}, status="ERROR")
 
         if not narrative:
-            # Deterministic fallback if API call fails
             narrative = (
                 f"### Financial Variance Analysis for {ticker} ({metric_name})\n"
                 f"- **Fiscal Year {prior_year}**: {calc_res.prior_period_value} USD (Millions)\n"
@@ -209,12 +216,16 @@ Synthesize an Executive Summary report following the System Constitution. Includ
 
 
 class RootOrchestrator:
-    """ADK Root Orchestrator supervising FinancialAnalystAgent and model routing."""
+    """ADK Root Orchestrator supervising FinancialAnalystAgent, session memory, and model routing."""
 
     def __init__(self):
         self.reasoning_model = settings.reasoning_model
         self.tool_model = settings.tool_model
         self.analyst_agent = FinancialAnalystAgent()
+        self.session_store = PersistentSessionStore()
+        self.compactor = HistoryCompactor()
+        self.cache_manager = ContextCacheManager(settings.gcp_project_id, settings.gcp_region)
+        self.async_memory = AsyncMemoryManager(self.session_store, self.compactor)
 
     @trace_span("RootOrchestrator.dispatch")
     def dispatch_query(
@@ -224,19 +235,39 @@ class RootOrchestrator:
         current_year: int,
         prior_year: int,
         metric_name: str,
+        session_id: str = "default_session",
         export_gcs_uri: Optional[str] = None,
         human_approved_export: bool = False,
     ) -> Dict[str, Any]:
-        """Routes user queries to sub-agents and tool callers with live model routing."""
+        """Routes user queries to sub-agents, manages persistent session memory, and applies history compaction."""
+        # Step 1: Retrieve persistent session history and apply compaction
+        raw_history = self.session_store.get_session_history(session_id)
+        compacted = self.compactor.compact_history(raw_history)
+
+        # Step 2: Context caching for filing documents
+        cache_key = f"{ticker}_{current_year}_10K"
+        self.cache_manager.get_or_create_cache(cache_key, content=f"SEC 10K filing data for {ticker}")
+
+        # Step 3: Run analysis with compacted context summary
         analysis_res = self.analyst_agent.run_analysis(
             ticker=ticker,
             current_year=current_year,
             prior_year=prior_year,
             metric_name=metric_name,
+            context_summary=compacted.summary_of_older_turns,
         )
 
         if not analysis_res.get("is_success"):
             return analysis_res
+
+        # Step 4: Save turn to persistent session store
+        user_q = f"Analyze {ticker} {metric_name} ({current_year} vs {prior_year})"
+        self.session_store.save_session_turn(
+            session_id=session_id,
+            user_query=user_q,
+            agent_response=analysis_res["narrative"],
+            metadata={"ticker": ticker, "metric": metric_name},
+        )
 
         if export_gcs_uri:
             export_req = ExportReportRequest(
@@ -248,3 +279,31 @@ class RootOrchestrator:
             analysis_res["export_status"] = export_res.model_dump()
 
         return analysis_res
+
+    async def dispatch_query_async(
+        self,
+        query_type: str,
+        ticker: str,
+        current_year: int,
+        prior_year: int,
+        metric_name: str,
+        session_id: str = "default_session",
+    ) -> Dict[str, Any]:
+        """Asynchronous query dispatch with background memory consolidation."""
+        res = self.dispatch_query(
+            query_type=query_type,
+            ticker=ticker,
+            current_year=current_year,
+            prior_year=prior_year,
+            metric_name=metric_name,
+            session_id=session_id,
+        )
+        if res.get("is_success"):
+            user_q = f"Analyze {ticker} {metric_name}"
+            await self.async_memory.consolidate_session_memory_async(
+                session_id=session_id,
+                user_query=user_q,
+                agent_response=res["narrative"],
+                metadata={"ticker": ticker},
+            )
+        return res
