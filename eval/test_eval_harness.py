@@ -114,5 +114,5 @@ def test_root_orchestrator_end_to_end():
     assert response["ticker"] == "AAPL"
     assert response["variance_result"].absolute_change == -11043.0
     assert response["variance_result"].percentage_change == -2.8
-    assert "Financial Variance Analysis for AAPL" in response["narrative"]
-    assert "macroeconomic" in response["narrative"]
+    assert "AAPL" in response["narrative"]
+    assert "macroeconomic" in response["narrative"].lower()

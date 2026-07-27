@@ -5,6 +5,9 @@
 **GitHub Remote**: [cvwang/sec-analyst](https://github.com/cvwang/sec-analyst)  
 **Target GCP Sandbox**: `fde-sec-edgar-sandbox-dev` (`us-central1`)
 
+> [!IMPORTANT]
+> 🚨 **ACTION ITEM**: Submit the **AI in 5 Days** project for review later today!
+
 ---
 
 ## 🚀 What We Have Accomplished (Phase 1 & Vertex AI Live Verified)
