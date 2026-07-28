@@ -2,7 +2,7 @@
 
 **Date**: July 24, 2026  
 **Repository**: `ai-in-5-days`  
-**GitHub Remote**: [cvwang/sec-analyst](https://github.com/cvwang/sec-analyst)  
+**GitHub Remote**: [cvwang/sec-edgar-analyst](https://github.com/cvwang/sec-edgar-analyst)  
 **Target GCP Sandbox**: `fde-sec-edgar-sandbox-dev` (`us-central1`)
 
 > [!IMPORTANT]
