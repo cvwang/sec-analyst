@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEC EDGAR Natural Language Financial Analyst | FDE Capstone</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <div class="logo-icon">📊</div>
+            <div>
+                <h1 class="app-title">SEC EDGAR Financial Analyst</h1>
+                <p class="app-subtitle">FDE Capstone Project • Hybrid Search RAG & Agentic Synthesis</p>
+            </div>
+        </div>
+        <div class="header-right">
+            <span class="badge badge-engine" id="engineBadge">⚡ Vertex AI (Gemini 2.5 Pro)</span>
+            <span class="badge badge-rag">🔍 Hybrid RAG (BigQuery + SEC 10-K)</span>
+            <span class="badge badge-memory" id="memoryBadge">🧠 Session: user_session_001 | Turns: 0</span>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="app-container">
+        <!-- Control & Query Bar -->
+        <section class="control-panel glass-card">
+            <div class="query-row">
+                <div class="input-group flex-grow">
+                    <label for="naturalQuery">Natural Language Query Prompt</label>
+                    <div class="search-input-wrapper">
+                        <input type="text" id="naturalQuery" placeholder="e.g. Analyze Apple revenue 2023 vs 2022 or compare Nvidia and Microsoft..." value="Analyze Apple revenue 2023 vs 2022">
+                        <button id="btnRunQuery" class="btn btn-primary">🚀 Run Analysis</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="params-row">
+                <div class="input-group">
+                    <label for="selectQueryType">Query Mode</label>
+                    <select id="selectQueryType">
+                        <option value="variance_analysis">Single Company Variance</option>
+                        <option value="peer_comparison">Multi-Company Peer Comparison</option>
+                        <option value="thematic_tracking">Longitudinal Thematic Tracking</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="selectTicker">Primary Ticker</label>
+                    <select id="selectTicker">
+                        <option value="AAPL">AAPL (Apple Inc.)</option>
+                        <option value="MSFT">MSFT (Microsoft Corp)</option>
+                        <option value="NVDA">NVDA (NVIDIA Corp)</option>
+                        <option value="GOOGL">GOOGL (Alphabet Inc.)</option>
+                        <option value="AMZN">AMZN (Amazon.com)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="selectCurrentYear">Current FY</label>
+                    <select id="selectCurrentYear">
+                        <option value="2024">2024</option>
+                        <option value="2023" selected>2023</option>
+                        <option value="2022">2022</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="selectPriorYear">Prior FY</label>
+                    <select id="selectPriorYear">
+                        <option value="2023">2023</option>
+                        <option value="2022" selected>2022</option>
+                        <option value="2021">2021</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="selectMetric">Financial Metric</label>
+                    <select id="selectMetric">
+                        <option value="Revenue">Revenue</option>
+                        <option value="Operating Income">Operating Income</option>
+                        <option value="Net Income">Net Income</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Split-Pane Workspace -->
+        <section class="split-workspace">
+            <!-- Left Pane: Analysis Narrative & Variance Metrics -->
+            <div class="pane pane-left glass-card">
+                <div class="pane-header">
+                    <h2>📈 Executive Synthesis & Variance Breakdown</h2>
+                    <button id="btnExportGCS" class="btn btn-secondary btn-sm">🔒 Export to GCS</button>
+                </div>
+
+                <!-- KPI Metric Cards -->
+                <div class="kpi-grid" id="kpiGrid">
+                    <div class="kpi-card">
+                        <div class="kpi-title">Prior Period (FY2022)</div>
+                        <div class="kpi-value" id="kpiPrior">394,328M</div>
+                        <div class="kpi-unit">USD (Millions)</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Current Period (FY2023)</div>
+                        <div class="kpi-value" id="kpiCurrent">383,285M</div>
+                        <div class="kpi-unit">USD (Millions)</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Absolute Change</div>
+                        <div class="kpi-value negative" id="kpiAbs">-11,043M</div>
+                        <div class="kpi-unit">USD (Millions)</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Percentage Change</div>
+                        <div class="kpi-value negative" id="kpiPct">-2.8%</div>
+                        <div class="kpi-badge badge-down" id="kpiBadge">Decrease</div>
+                    </div>
+                </div>
+
+                <!-- Narrative Report Content -->
+                <div class="report-content" id="reportContent">
+                    <div class="placeholder-msg">
+                        <p>Select your analysis parameters and click <strong>Run Analysis</strong> to synthesize an agentic report grounded in SEC 10-K filings.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Pane: Grounded 10-K Source Citation Viewer -->
+            <div class="pane pane-right glass-card">
+                <div class="pane-header">
+                    <h2>📄 Grounded 10-K Filing Source Viewer</h2>
+                    <span class="source-count-badge" id="sourceCount">3 Sources Grounded</span>
+                </div>
+
+                <div class="source-list" id="sourceList">
+                    <div class="source-card active">
+                        <div class="source-header">
+                            <span class="source-title">Apple Inc. FY2023 10-K</span>
+                            <span class="source-tag">Item 7 - MD&A</span>
+                        </div>
+                        <div class="source-excerpt">
+                            "Apple Inc. FY2023 10-K: Total net sales were <mark>$383,285 million down 2.8%</mark> due to macroeconomic headwinds in hardware sales."
+                        </div>
+                        <div class="source-citation">Citation: Apple Inc. FY2023 10-K Item 7 (MD&A, Page 31)</div>
+                    </div>
+
+                    <div class="source-card">
+                        <div class="source-header">
+                            <span class="source-title">Apple Inc. FY2022 10-K</span>
+                            <span class="source-tag">Item 7 - MD&A</span>
+                        </div>
+                        <div class="source-excerpt">
+                            "Apple Inc. FY2022 10-K: Total net sales reached a record <mark>$394,328 million</mark> driven by iPhone 14 momentum."
+                        </div>
+                        <div class="source-citation">Citation: Apple Inc. FY2022 10-K Item 7 (MD&A, Page 33)</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Human-In-The-Loop Export Guardrail Modal -->
+    <div class="modal-overlay hidden" id="hitlModal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <span class="modal-icon">🔒</span>
+                <h3>Human-In-The-Loop Guardrail Triggered</h3>
+            </div>
+            <div class="modal-body">
+                <p>The agent is requesting permission to write external data to Google Cloud Storage:</p>
+                <div class="code-block" id="gcsUriDisplay">gs://fde-sec-edgar-reports/aapl_2023_report.md</div>
+                <p class="modal-notice">Per compliance rules, automated external exports require explicit human confirmation before execution.</p>
+            </div>
+            <div class="modal-footer">
+                <button id="btnCancelExport" class="btn btn-secondary">Cancel</button>
+                <button id="btnConfirmExport" class="btn btn-success">✅ Grant Approval & Export</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

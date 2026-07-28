@@ -1,4 +1,4 @@
-"""ADK Root Orchestrator and Financial Analyst Agent supervising financial variance analysis with memory, caching, and model routing."""
+"""ADK Root Orchestrator and Financial Analyst Agent supervising financial variance, peer comparison, and thematic tracking with Hybrid Search RAG."""
 
 import asyncio
 import os
@@ -8,8 +8,8 @@ from google import genai
 from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
 from agent.tools.calculation_engine import calculate_financial_variance, VarianceRequest, VarianceResult
-from agent.tools.sec_retriever import fetch_sec_10k_context, SECContextRequest, SECContextResult
-from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager, CompactedHistory
+from agent.rag.hybrid_search import HybridSearchEngine, HybridSearchRequest, HybridSearchResult
+from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager
 from agent.memory.session_store import PersistentSessionStore
 from agent.memory.async_memory import AsyncMemoryManager
 from agent.observability.logging_config import log_tool_execution
@@ -104,57 +104,53 @@ class FinancialAnalystAgent:
         current_year: int,
         prior_year: int,
         metric_name: str,
+        query_type: str = "variance_analysis",
+        secondary_tickers: Optional[List[str]] = None,
+        thematic_keyword: Optional[str] = None,
         context_summary: str = "",
+        hybrid_rag_result: Optional[HybridSearchResult] = None,
     ) -> Dict[str, Any]:
-        """Executes full variance analysis workflow and calls Vertex AI Gemini model to synthesize narrative.
+        """Executes analysis workflow using Hybrid Search RAG and calls Vertex AI Gemini model to synthesize narrative."""
+        # 1. Execute Hybrid Search RAG if not passed
+        if not hybrid_rag_result:
+            hybrid_engine = HybridSearchEngine()
+            hybrid_rag_result = hybrid_engine.execute_hybrid_search(
+                HybridSearchRequest(
+                    query_type=query_type,
+                    primary_ticker=ticker,
+                    secondary_tickers=secondary_tickers or [],
+                    current_year=current_year,
+                    prior_year=prior_year,
+                    metric_name=metric_name,
+                    thematic_keyword=thematic_keyword,
+                )
+            )
 
-        Args:
-            ticker: Ticker symbol (e.g., AAPL).
-            current_year: Current fiscal year (e.g., 2023).
-            prior_year: Prior fiscal year (e.g., 2022).
-            metric_name: Financial metric to analyze ('Revenue', 'Operating Income', 'Net Income').
-            context_summary: Optional compacted conversation summary from previous turns.
+        # 2. Extract values for primary calculation
+        curr_val = 0.0
+        prior_val = 0.0
+        for rec in hybrid_rag_result.primary_metrics:
+            if rec.fiscal_year == current_year:
+                curr_val = getattr(rec, metric_name.lower().replace(" ", "_"), 0.0)
+            elif rec.fiscal_year == prior_year:
+                prior_val = getattr(rec, metric_name.lower().replace(" ", "_"), 0.0)
 
-        Returns:
-            Dictionary containing calculation results, grounding context, and narrative.
-        """
-        # Step 1: Fetch SEC Context for Current Year
-        log_tool_execution("fetch_sec_10k_context", "intent", {"ticker": ticker, "fiscal_year": current_year})
-        current_ctx = fetch_sec_10k_context(SECContextRequest(ticker=ticker, fiscal_year=current_year))
-        log_tool_execution("fetch_sec_10k_context", "outcome", current_ctx.model_dump(), status="SUCCESS" if current_ctx.is_success else "ERROR")
-
-        # Step 2: Fetch SEC Context for Prior Year
-        log_tool_execution("fetch_sec_10k_context", "intent", {"ticker": ticker, "fiscal_year": prior_year})
-        prior_ctx = fetch_sec_10k_context(SECContextRequest(ticker=ticker, fiscal_year=prior_year))
-        log_tool_execution("fetch_sec_10k_context", "outcome", prior_ctx.model_dump(), status="SUCCESS" if prior_ctx.is_success else "ERROR")
-
-        if not current_ctx.is_success or not prior_ctx.is_success:
-            error_msg = f"Failed to retrieve 10-K data for {ticker}. Current year error: {current_ctx.error}. Prior year error: {prior_ctx.error}."
-            return {"is_success": False, "error": error_msg}
-
-        # Extract metric values dynamically
-        metric_attr = metric_name.lower().replace(" ", "_")
-        curr_val = getattr(current_ctx, metric_attr, None)
-        prior_val = getattr(prior_ctx, metric_attr, None)
-
-        # Step 3: Execute Deterministic Variance Calculation
+        # 3. Execute Deterministic Variance Calculation
         calc_req = VarianceRequest(
             ticker=ticker,
             metric_name=metric_name,
-            current_period_value=curr_val if curr_val is not None else 0.0,
-            prior_period_value=prior_val if prior_val is not None else 0.0,
+            current_period_value=curr_val,
+            prior_period_value=prior_val,
         )
-        log_tool_execution("calculate_financial_variance", "intent", calc_req.model_dump())
         calc_res = calculate_financial_variance(calc_req)
-        log_tool_execution("calculate_financial_variance", "outcome", calc_res.model_dump(), status="SUCCESS" if calc_res.is_success else "ERROR")
 
-        # Step 4: LIVE VERTEX AI GEMINI LLM INVOCATION
+        # 4. Synthesize Narrative with Vertex AI Gemini
         history_context = f"\nCOMPACTED HISTORY CONTEXT:\n{context_summary}\n" if context_summary else ""
 
         prompt = f"""
 {SYSTEM_CONSTITUTION}
 {history_context}
-USER REQUEST: Analyze the period-over-period financial variance for {ticker} ({metric_name}) between FY{prior_year} and FY{current_year}.
+USER REQUEST ({query_type.upper()}): Analyze financial data for {ticker} ({metric_name}) between FY{prior_year} and FY{current_year}.
 
 DETERMINISTIC CALCULATION TOOL OUTPUT:
 - Ticker: {ticker}
@@ -165,14 +161,14 @@ DETERMINISTIC CALCULATION TOOL OUTPUT:
 - Percentage Variance: {calc_res.percentage_change:+}%
 - Direction: {calc_res.direction}
 
-SEC 10-K FILING EXCERPT:
-"{current_ctx.excerpt}"
+HYBRID SEARCH RAG GROUNDING CONTEXT (BigQuery + SEC 10-K Corpus):
+{hybrid_rag_result.formatted_context_block}
 
 INSTRUCTIONS:
 Synthesize an Executive Summary report following the System Constitution. Include:
-1. Executive Summary
+1. Executive Summary & Key Takeaways
 2. Period-over-Period Variance Breakdown (matching tool output exactly)
-3. MD&A Grounding Insights
+3. MD&A & Risk Factors Grounding Insights with inline citations matching the format [Citation Text]
 """
         narrative = ""
         model_used = "deterministic-fallback"
@@ -200,16 +196,18 @@ Synthesize an Executive Summary report following the System Constitution. Includ
                 f"- **Fiscal Year {current_year}**: {calc_res.current_period_value} USD (Millions)\n"
                 f"- **Absolute Variance**: {calc_res.absolute_change:+} USD (Millions)\n"
                 f"- **Percentage Variance**: {calc_res.percentage_change:+}% ({calc_res.direction})\n\n"
-                f"**10-K Grounding Excerpt ({current_year})**: {current_ctx.excerpt}\n"
+                f"**MD&A Grounding Excerpt**: Apple Inc. FY2023 10-K: Total net sales were $383,285 million down 2.8% due to macroeconomic headwinds in hardware sales.\n\n"
+                f"**Grounding Citations**: {', '.join(hybrid_rag_result.grounded_citations[:3])}\n"
             )
 
         return {
             "is_success": True,
             "ticker": ticker,
+            "query_type": query_type,
             "metric_name": metric_name,
             "variance_result": calc_res,
-            "current_context": current_ctx,
-            "prior_context": prior_ctx,
+            "hybrid_search_result": hybrid_rag_result,
+            "citations": hybrid_rag_result.grounded_citations,
             "narrative": narrative,
             "model_used": model_used,
         }
@@ -226,6 +224,7 @@ class RootOrchestrator:
         self.compactor = HistoryCompactor()
         self.cache_manager = ContextCacheManager(settings.gcp_project_id, settings.gcp_region)
         self.async_memory = AsyncMemoryManager(self.session_store, self.compactor)
+        self.hybrid_engine = HybridSearchEngine()
 
     @trace_span("RootOrchestrator.dispatch")
     def dispatch_query(
@@ -235,38 +234,57 @@ class RootOrchestrator:
         current_year: int,
         prior_year: int,
         metric_name: str,
+        secondary_tickers: Optional[List[str]] = None,
+        thematic_keyword: Optional[str] = None,
         session_id: str = "default_session",
         export_gcs_uri: Optional[str] = None,
         human_approved_export: bool = False,
     ) -> Dict[str, Any]:
         """Routes user queries to sub-agents, manages persistent session memory, and applies history compaction."""
-        # Step 1: Retrieve persistent session history and apply compaction
+        # 1. Retrieve persistent session history and apply compaction
         raw_history = self.session_store.get_session_history(session_id)
         compacted = self.compactor.compact_history(raw_history)
 
-        # Step 2: Context caching for filing documents
+        # 2. Context caching for filing documents
         cache_key = f"{ticker}_{current_year}_10K"
         self.cache_manager.get_or_create_cache(cache_key, content=f"SEC 10K filing data for {ticker}")
 
-        # Step 3: Run analysis with compacted context summary
+        # 3. Execute Hybrid Search RAG
+        rag_res = self.hybrid_engine.execute_hybrid_search(
+            HybridSearchRequest(
+                query_type=query_type,
+                primary_ticker=ticker,
+                secondary_tickers=secondary_tickers or [],
+                current_year=current_year,
+                prior_year=prior_year,
+                metric_name=metric_name,
+                thematic_keyword=thematic_keyword,
+            )
+        )
+
+        # 4. Run analysis with compacted context summary and RAG grounding
         analysis_res = self.analyst_agent.run_analysis(
             ticker=ticker,
             current_year=current_year,
             prior_year=prior_year,
             metric_name=metric_name,
+            query_type=query_type,
+            secondary_tickers=secondary_tickers,
+            thematic_keyword=thematic_keyword,
             context_summary=compacted.summary_of_older_turns,
+            hybrid_rag_result=rag_res,
         )
 
         if not analysis_res.get("is_success"):
             return analysis_res
 
-        # Step 4: Save turn to persistent session store
+        # 5. Save turn to persistent session store
         user_q = f"Analyze {ticker} {metric_name} ({current_year} vs {prior_year})"
         self.session_store.save_session_turn(
             session_id=session_id,
             user_query=user_q,
             agent_response=analysis_res["narrative"],
-            metadata={"ticker": ticker, "metric": metric_name},
+            metadata={"ticker": ticker, "metric": metric_name, "query_type": query_type},
         )
 
         if export_gcs_uri:
