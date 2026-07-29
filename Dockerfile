@@ -2,7 +2,6 @@
 
 FROM python:3.11-slim
 
-# Prevent Python from writing .pyc files & enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
@@ -25,5 +24,5 @@ COPY . .
 # Expose Cloud Run default port
 EXPOSE 8080
 
-# Start Uvicorn FastAPI production web server
-CMD ["uvicorn", "agent.api:app", "--host", "0.0.0.0", "--port", "8080"]
+# Start Uvicorn FastAPI production web server using shell expansion for $PORT
+CMD ["sh", "-c", "uvicorn agent.api:app --host 0.0.0.0 --port ${PORT:-8080}"]

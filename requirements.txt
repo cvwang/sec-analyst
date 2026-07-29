@@ -2,6 +2,8 @@ google-genai
 fastapi
 uvicorn
 pydantic
+requests
+anyio
 opentelemetry-api
 opentelemetry-sdk
 python-json-logger
