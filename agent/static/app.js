@@ -55,9 +55,22 @@ document.addEventListener("DOMContentLoaded", () => {
         btnRunQuery.textContent = "⏳ Analyzing...";
         reportContent.innerHTML = "<p>🚀 Invoking RootOrchestrator and Hybrid Search RAG...</p>";
 
+        let tickerVal = selectTicker.value.trim().toUpperCase() || "AAPL";
+        const nQuery = naturalQueryInput.value.toUpperCase();
+        
+        // Extract custom ticker from prompt if typed (e.g. TSLA, META, AMD, JPM, WMT)
+        const commonTickers = ["TSLA", "META", "AMD", "JPM", "BAC", "WMT", "NFLX", "INTC", "NVDA", "AAPL", "MSFT", "GOOGL", "AMZN"];
+        for (const t of commonTickers) {
+            if (nQuery.includes(t)) {
+                tickerVal = t;
+                selectTicker.value = t;
+                break;
+            }
+        }
+
         const payload = {
             query_type: selectQueryType.value,
-            ticker: selectTicker.value,
+            ticker: tickerVal,
             current_year: parseInt(selectCurrentYear.value),
             prior_year: parseInt(selectPriorYear.value),
             metric_name: selectMetric.value,

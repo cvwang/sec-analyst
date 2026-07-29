@@ -51,14 +51,20 @@
                     </select>
                 </div>
                 <div class="input-group">
-                    <label for="selectTicker">Primary Ticker</label>
-                    <select id="selectTicker">
-                        <option value="AAPL">AAPL (Apple Inc.)</option>
-                        <option value="MSFT">MSFT (Microsoft Corp)</option>
-                        <option value="NVDA">NVDA (NVIDIA Corp)</option>
-                        <option value="GOOGL">GOOGL (Alphabet Inc.)</option>
-                        <option value="AMZN">AMZN (Amazon.com)</option>
-                    </select>
+                    <label for="selectTicker">Primary Ticker (Any Public Stock)</label>
+                    <input type="text" id="selectTicker" list="tickerSuggestions" placeholder="e.g. AAPL, TSLA, META, NVDA, AMD..." value="AAPL">
+                    <datalist id="tickerSuggestions">
+                        <option value="AAPL">Apple Inc. (AAPL)</option>
+                        <option value="MSFT">Microsoft Corp (MSFT)</option>
+                        <option value="NVDA">NVIDIA Corp (NVDA)</option>
+                        <option value="GOOGL">Alphabet Inc. (GOOGL)</option>
+                        <option value="AMZN">Amazon.com (AMZN)</option>
+                        <option value="TSLA">Tesla Inc. (TSLA)</option>
+                        <option value="META">Meta Platforms (META)</option>
+                        <option value="AMD">Advanced Micro Devices (AMD)</option>
+                        <option value="JPM">JPMorgan Chase (JPM)</option>
+                        <option value="WMT">Walmart Inc. (WMT)</option>
+                    </datalist>
                 </div>
                 <div class="input-group">
                     <label for="selectCurrentYear">Current FY</label>
