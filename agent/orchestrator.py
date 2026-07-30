@@ -109,6 +109,7 @@ class FinancialAnalystAgent:
         thematic_keyword: Optional[str] = None,
         context_summary: str = "",
         hybrid_rag_result: Optional[HybridSearchResult] = None,
+        user_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Executes analysis workflow using Hybrid Search RAG and calls Vertex AI Gemini model to synthesize narrative."""
         # 1. Execute Hybrid Search RAG if not passed
@@ -147,34 +148,37 @@ class FinancialAnalystAgent:
         # 4. Synthesize Narrative with Vertex AI Gemini
         history_context = f"\nCOMPACTED HISTORY CONTEXT:\n{context_summary}\n" if context_summary else ""
 
+        abs_str = f"{calc_res.absolute_change:+}" if calc_res.absolute_change is not None else "N/A"
+        pct_str = f"{calc_res.percentage_change:+}%" if calc_res.percentage_change is not None else "N/A"
+        user_q_str = f"EXPACT USER PROMPT: {user_prompt}" if user_prompt else f"USER REQUEST: Analyze financial data for {ticker} ({metric_name}) between FY{prior_year} and FY{current_year}."
+
         prompt = f"""
 {SYSTEM_CONSTITUTION}
 {history_context}
-USER REQUEST ({query_type.upper()}): Analyze financial data for {ticker} ({metric_name}) between FY{prior_year} and FY{current_year}.
+{user_q_str}
 
 DETERMINISTIC CALCULATION TOOL OUTPUT:
 - Ticker: {ticker}
 - Metric: {metric_name}
 - FY{prior_year} Value: {calc_res.prior_period_value} USD (Millions)
 - FY{current_year} Value: {calc_res.current_period_value} USD (Millions)
-- Absolute Variance: {calc_res.absolute_change:+} USD (Millions)
-- Percentage Variance: {calc_res.percentage_change:+}%
+- Absolute Variance: {abs_str} USD (Millions)
+- Percentage Variance: {pct_str}
 - Direction: {calc_res.direction}
 
 HYBRID SEARCH RAG GROUNDING CONTEXT (BigQuery + SEC 10-K Corpus):
 {hybrid_rag_result.formatted_context_block}
 
 INSTRUCTIONS:
-Synthesize an Executive Summary report following the System Constitution. Include:
-1. Executive Summary & Key Takeaways
-2. Period-over-Period Variance Breakdown (matching tool output exactly)
-3. MD&A & Risk Factors Grounding Insights with inline citations matching the format [Citation Text]
+Directly answer the user prompt above using the grounded context and tool outputs.
+1. DO NOT include any introductory pleasantries or filler preamble (e.g., NEVER write "Of course", "Here is the", "Certainly", or "Based on the data"). Jump directly into your answer.
+2. Select ONLY the relevant metrics and fiscal years needed to answer the user's specific request. Do NOT dump unnecessary prior-period comparison tables or unrequested metric breakdowns unless the user explicitly requested a multi-year comparison or growth analysis.
 """
         narrative = ""
         model_used = "deterministic-fallback"
 
         if self.client:
-            models_to_try = [self.model_name, "gemini-2.0-flash", "gemini-1.5-pro"]
+            models_to_try = [self.model_name, "gemini-3.5-flash", "gemini-2.5-pro"]
             for model_id in models_to_try:
                 try:
                     log_tool_execution("vertex_ai_generate_content", "intent", {"model": model_id, "ticker": ticker})
@@ -190,15 +194,18 @@ Synthesize an Executive Summary report following the System Constitution. Includ
                     log_tool_execution("vertex_ai_generate_content", "outcome", {"model": model_id, "error": str(err)}, status="ERROR")
 
         if not narrative:
-            narrative = (
-                f"### Financial Variance Analysis for {ticker} ({metric_name})\n"
-                f"- **Fiscal Year {prior_year}**: {calc_res.prior_period_value} USD (Millions)\n"
-                f"- **Fiscal Year {current_year}**: {calc_res.current_period_value} USD (Millions)\n"
-                f"- **Absolute Variance**: {calc_res.absolute_change:+} USD (Millions)\n"
-                f"- **Percentage Variance**: {calc_res.percentage_change:+}% ({calc_res.direction})\n\n"
-                f"**MD&A Grounding Excerpt**: Apple Inc. FY2023 10-K: Total net sales were $383,285 million down 2.8% due to macroeconomic headwinds in hardware sales.\n\n"
-                f"**Grounding Citations**: {', '.join(hybrid_rag_result.grounded_citations[:3])}\n"
-            )
+            return {
+                "is_success": False,
+                "error": "Vertex AI Gemini model execution failed. Please verify GCP ADC authentication (`gcloud auth application-default login`).",
+                "narrative": "⚠️ Unable to generate dynamic LLM response. Please run `gcloud auth application-default login` to re-authenticate with Google Cloud.",
+                "ticker": ticker,
+                "query_type": query_type,
+                "metric_name": metric_name,
+                "variance_result": calc_res,
+                "hybrid_search_result": hybrid_rag_result,
+                "citations": hybrid_rag_result.grounded_citations if hybrid_rag_result else [],
+                "model_used": "failed-auth",
+            }
 
         return {
             "is_success": True,
@@ -268,13 +275,15 @@ class RootOrchestrator:
         else:
             current_year, prior_year = 2023, 2022
 
-        # Query type
-        if secondary_tickers or "COMPARE" in prompt_upper or "VS" in prompt_upper and len(found_tickers) > 1:
+        # Query type classification
+        if secondary_tickers or "COMPARE" in prompt_upper or ("VS" in prompt_upper and len(found_tickers) > 1):
             query_type = "peer_comparison"
         elif "RISK" in prompt_upper or "THEMATIC" in prompt_upper or "AI" in prompt_upper:
             query_type = "thematic_tracking"
-        else:
+        elif "VARIANCE" in prompt_upper or "GROWTH" in prompt_upper or "CHANGE" in prompt_upper or "VS" in prompt_upper or "INCREASE" in prompt_upper or "DECREASE" in prompt_upper:
             query_type = "variance_analysis"
+        else:
+            query_type = "financial_summary"
 
         return {
             "query_type": query_type,
@@ -348,6 +357,7 @@ class RootOrchestrator:
             thematic_keyword=thematic_keyword,
             context_summary=compacted.summary_of_older_turns,
             hybrid_rag_result=rag_res,
+            user_prompt=prompt,
         )
 
         if not analysis_res.get("is_success"):

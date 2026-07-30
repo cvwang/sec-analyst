@@ -9,7 +9,8 @@ from agent.guardrails.pii_scrubber import PIIScrubber
 from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager
 from agent.memory.session_store import PersistentSessionStore
 from agent.memory.async_memory import AsyncMemoryManager
-from agent.orchestrator import RootOrchestrator, export_financial_report, ExportReportRequest
+from agent.config import settings
+from agent.orchestrator import RootOrchestrator, FinancialAnalystAgent, export_financial_report, ExportReportRequest
 
 GOLDEN_DATASET_PATH = os.path.join(os.path.dirname(__file__), "golden_dataset.json")
 
@@ -159,9 +160,21 @@ def test_context_cache_manager():
     assert res2["status"] == "CACHE_HIT"
 
 
-def test_root_orchestrator_end_to_end():
-    """Evaluates ADK RootOrchestrator workflow and grounded narrative synthesis."""
+def test_root_orchestrator_end_to_end(monkeypatch):
+    """Evaluates ADK RootOrchestrator workflow and grounded dynamic LLM narrative synthesis."""
+    class MockGenerateResponse:
+        text = "### Executive Summary for AAPL (Revenue)\nApple Inc. FY2023 10-K reported Total Net Sales of $383,285 million, down 2.8% due to macroeconomic headwinds in hardware sales."
+
+    class MockModels:
+        def generate_content(self, model, contents):
+            return MockGenerateResponse()
+
+    class MockGenAIClient:
+        models = MockModels()
+
     orchestrator = RootOrchestrator()
+    orchestrator.analyst_agent.client = MockGenAIClient()
+
     response = orchestrator.dispatch_query(
         query_type="variance_analysis",
         ticker="AAPL",
@@ -176,3 +189,17 @@ def test_root_orchestrator_end_to_end():
     assert response["variance_result"].percentage_change == -2.8
     assert "AAPL" in response["narrative"]
     assert "macroeconomic" in response["narrative"].lower()
+    assert response["model_used"].startswith("Vertex AI")
+
+
+def test_model_configuration_validation():
+    """Evaluates runtime settings for model selection and fallback hierarchy."""
+    assert settings.reasoning_model is not None
+    assert isinstance(settings.reasoning_model, str)
+    assert len(settings.reasoning_model) > 0
+    assert settings.tool_model is not None
+    assert isinstance(settings.tool_model, str)
+    assert len(settings.tool_model) > 0
+
+    agent = FinancialAnalystAgent()
+    assert agent.model_name == settings.reasoning_model

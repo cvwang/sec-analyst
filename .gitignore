@@ -21,6 +21,11 @@ override.tf.json
 *.log
 agent_sessions.json
 
+# Frontend / Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
 # Local notes / evaluation files
 FDE Onboarding Project.md
 Individual project instructions.md

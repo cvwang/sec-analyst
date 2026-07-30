@@ -90,17 +90,15 @@ def analyze_financials(request: AnalysisApiRequest):
             session_id=request.session_id,
         )
 
-        if not response.get("is_success"):
-            raise HTTPException(status_code=400, detail=response.get("error"))
-
         # Scrub PII from outgoing response
-        response["narrative"] = PIIScrubber.scrub_text(response["narrative"])
+        if response.get("narrative"):
+            response["narrative"] = PIIScrubber.scrub_text(response["narrative"])
 
         log_tool_execution(
             tool_name="api_analyze_financials",
             stage="outcome",
-            payload={"ticker": request.ticker, "status": "SUCCESS"},
-            status="SUCCESS",
+            payload={"ticker": request.ticker, "status": "SUCCESS" if response.get("is_success") else "FAILURE"},
+            status="SUCCESS" if response.get("is_success") else "ERROR",
         )
         return response
 
@@ -136,6 +134,9 @@ def get_session_history(session_id: str = "user_session_001"):
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    assets_dir = os.path.join(static_dir, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
 
 @app.get("/")
