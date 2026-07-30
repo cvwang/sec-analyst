@@ -11,7 +11,7 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse }) => {
   const textChunks = lastResponse?.hybrid_search_result?.text_chunks || [];
 
   return (
-    <aside className="w-80 glass-panel border-l border-slate-800 flex flex-col h-full shrink-0">
+    <aside className="w-full h-full glass-panel border-l border-slate-800 flex flex-col shrink-0 overflow-hidden">
       <div className="p-4 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Database className="w-4 h-4 text-blue-400" />
