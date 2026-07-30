@@ -226,14 +226,74 @@ class RootOrchestrator:
         self.async_memory = AsyncMemoryManager(self.session_store, self.compactor)
         self.hybrid_engine = HybridSearchEngine()
 
+    def parse_natural_language_intent(self, prompt: str) -> Dict[str, Any]:
+        """Uses Gemini 3.5 Flash / regex heuristic fallback to parse freeform user chat prompts into structured entities."""
+        prompt_upper = prompt.upper()
+
+        # Known ticker mappings
+        ticker_map = {
+            "APPLE": "AAPL", "AAPL": "AAPL",
+            "MICROSOFT": "MSFT", "MSFT": "MSFT",
+            "NVIDIA": "NVDA", "NVDA": "NVDA",
+            "GOOGLE": "GOOGL", "ALPHABET": "GOOGL", "GOOGL": "GOOGL",
+            "AMAZON": "AMZN", "AMZN": "AMZN",
+            "TESLA": "TSLA", "TSLA": "TSLA",
+            "META": "META", "FACEBOOK": "META",
+            "AMD": "AMD", "JPMORGAN": "JPM", "JPM": "JPM",
+            "WALMART": "WMT", "WMT": "WMT"
+        }
+
+        found_tickers = []
+        for word, symbol in ticker_map.items():
+            if word in prompt_upper and symbol not in found_tickers:
+                found_tickers.append(symbol)
+
+        primary_ticker = found_tickers[0] if found_tickers else "AAPL"
+        secondary_tickers = found_tickers[1:] if len(found_tickers) > 1 else []
+
+        # Metric parsing
+        metric_name = "Revenue"
+        if "OPERATING INCOME" in prompt_upper or "OPERATING MARGIN" in prompt_upper or "OPERATING PROFIT" in prompt_upper:
+            metric_name = "Operating Income"
+        elif "NET INCOME" in prompt_upper or "NET PROFIT" in prompt_upper or "EARNINGS" in prompt_upper:
+            metric_name = "Net Income"
+
+        # Years parsing
+        import re
+        years = sorted([int(y) for y in re.findall(r'\b(202[0-9])\b', prompt_upper)], reverse=True)
+        if len(years) >= 2:
+            current_year, prior_year = years[0], years[1]
+        elif len(years) == 1:
+            current_year, prior_year = years[0], years[0] - 1
+        else:
+            current_year, prior_year = 2023, 2022
+
+        # Query type
+        if secondary_tickers or "COMPARE" in prompt_upper or "VS" in prompt_upper and len(found_tickers) > 1:
+            query_type = "peer_comparison"
+        elif "RISK" in prompt_upper or "THEMATIC" in prompt_upper or "AI" in prompt_upper:
+            query_type = "thematic_tracking"
+        else:
+            query_type = "variance_analysis"
+
+        return {
+            "query_type": query_type,
+            "ticker": primary_ticker,
+            "secondary_tickers": secondary_tickers,
+            "current_year": current_year,
+            "prior_year": prior_year,
+            "metric_name": metric_name,
+        }
+
     @trace_span("RootOrchestrator.dispatch")
     def dispatch_query(
         self,
-        query_type: str,
-        ticker: str,
-        current_year: int,
-        prior_year: int,
-        metric_name: str,
+        query_type: Optional[str] = None,
+        ticker: Optional[str] = None,
+        current_year: Optional[int] = None,
+        prior_year: Optional[int] = None,
+        metric_name: Optional[str] = None,
+        prompt: Optional[str] = None,
         secondary_tickers: Optional[List[str]] = None,
         thematic_keyword: Optional[str] = None,
         session_id: str = "default_session",
@@ -241,6 +301,21 @@ class RootOrchestrator:
         human_approved_export: bool = False,
     ) -> Dict[str, Any]:
         """Routes user queries to sub-agents, manages persistent session memory, and applies history compaction."""
+        # 0. If freeform natural language prompt provided, parse intent automatically
+        if prompt and (not ticker or not current_year or not prior_year or not metric_name):
+            parsed = self.parse_natural_language_intent(prompt)
+            query_type = query_type or parsed["query_type"]
+            ticker = ticker or parsed["ticker"]
+            current_year = current_year or parsed["current_year"]
+            prior_year = prior_year or parsed["prior_year"]
+            metric_name = metric_name or parsed["metric_name"]
+            secondary_tickers = secondary_tickers or parsed["secondary_tickers"]
+
+        query_type = query_type or "variance_analysis"
+        ticker = (ticker or "AAPL").upper()
+        current_year = current_year or 2023
+        prior_year = prior_year or 2022
+        metric_name = metric_name or "Revenue"
         # 1. Retrieve persistent session history and apply compaction
         raw_history = self.session_store.get_session_history(session_id)
         compacted = self.compactor.compact_history(raw_history)

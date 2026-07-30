@@ -35,11 +35,12 @@ orchestrator = RootOrchestrator()
 class AnalysisApiRequest(BaseModel):
     """Input payload for financial analysis REST API."""
 
+    prompt: Optional[str] = Field(None, description="Freeform natural language chat prompt.")
     query_type: str = Field("variance_analysis", description="'variance_analysis', 'peer_comparison', or 'thematic_tracking'")
-    ticker: str = Field("AAPL", description="Primary ticker symbol.")
-    current_year: int = Field(2023, description="Current fiscal year.")
-    prior_year: int = Field(2022, description="Prior fiscal year.")
-    metric_name: str = Field("Revenue", description="Financial metric name.")
+    ticker: Optional[str] = Field(None, description="Primary ticker symbol.")
+    current_year: Optional[int] = Field(None, description="Current fiscal year.")
+    prior_year: Optional[int] = Field(None, description="Prior fiscal year.")
+    metric_name: Optional[str] = Field(None, description="Financial metric name.")
     secondary_tickers: List[str] = Field(default_factory=list, description="Secondary tickers for peer comparison.")
     thematic_keyword: Optional[str] = Field(None, description="Thematic tracking keyword (e.g., 'AI', 'R&D').")
     session_id: str = Field("user_session_001", description="Persistent conversational session ID.")
@@ -78,6 +79,7 @@ def analyze_financials(request: AnalysisApiRequest):
 
     try:
         response = orchestrator.dispatch_query(
+            prompt=request.prompt,
             query_type=request.query_type,
             ticker=request.ticker,
             current_year=request.current_year,
