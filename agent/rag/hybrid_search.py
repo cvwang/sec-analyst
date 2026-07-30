@@ -1,6 +1,6 @@
 """Hybrid Search RAG Engine combining BigQuery structured metrics and SEC 10-K text retrieval."""
 
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from agent.rag.bigquery_store import BigQueryFinancialStore, FinancialMetricRecord
 from agent.rag.sec_corpus import SECCorpusStore, SECDocumentChunk

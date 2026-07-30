@@ -1,9 +1,8 @@
 """Live Financial Market & SEC EDGAR Data Retriever fetching real-time financial metrics and official 10-K filing facts."""
 
-import json
 import logging
 import requests
-from typing import Dict, Any, Optional, List
+from typing import Dict, Optional
 from pydantic import BaseModel, Field
 from agent.observability.logging_config import log_tool_execution
 

@@ -1,13 +1,12 @@
 """ADK Root Orchestrator and Financial Analyst Agent supervising financial variance, peer comparison, and thematic tracking with Hybrid Search RAG."""
 
-import asyncio
 import os
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from google import genai
 from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
-from agent.tools.calculation_engine import calculate_financial_variance, VarianceRequest, VarianceResult
+from agent.tools.calculation_engine import calculate_financial_variance, VarianceRequest
 from agent.rag.hybrid_search import HybridSearchEngine, HybridSearchRequest, HybridSearchResult
 from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager
 from agent.memory.session_store import PersistentSessionStore

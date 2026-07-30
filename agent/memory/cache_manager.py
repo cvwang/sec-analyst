@@ -2,7 +2,7 @@
 
 import logging
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from agent.observability.logging_config import log_tool_execution
 
 logger = logging.getLogger("sec_edgar_agent.memory")

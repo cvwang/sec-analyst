@@ -4,7 +4,6 @@ import json
 import os
 import pytest
 from agent.tools.calculation_engine import calculate_financial_variance, VarianceRequest
-from agent.tools.sec_retriever import fetch_sec_10k_context, SECContextRequest
 from agent.guardrails.pii_scrubber import PIIScrubber
 from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager
 from agent.memory.session_store import PersistentSessionStore

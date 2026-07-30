@@ -9,7 +9,6 @@ import re
 import json
 import time
 import urllib.request
-from typing import Dict, Any, List
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "10k_filings")
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "sec-analyst-sec-reports")

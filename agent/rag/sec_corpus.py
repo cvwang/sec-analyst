@@ -5,8 +5,7 @@ Grounded in Google Cloud Storage (gs://sec-analyst-sec-reports/filings/).
 
 import os
 import glob
-import requests
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "10k_filings")

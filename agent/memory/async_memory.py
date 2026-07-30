@@ -1,7 +1,7 @@
 """Async memory operations for background memory consolidation and non-blocking session processing."""
 
 import asyncio
-from typing import Dict, List, Any
+from typing import Dict, Any
 from agent.memory.cache_manager import HistoryCompactor, CompactedHistory
 from agent.memory.session_store import PersistentSessionStore
 from agent.observability.logging_config import log_tool_execution

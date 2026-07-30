@@ -1,8 +1,8 @@
 """FastAPI Web Server for SEC EDGAR Natural Language Analyst agent."""
 
 import os
-from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, HTTPException, Body
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse

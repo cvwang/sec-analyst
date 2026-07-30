@@ -1,6 +1,6 @@
 """SEC EDGAR context retriever tool for fetching live 10-K financial metrics and filing excerpts."""
 
-from typing import Dict, Any, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 from agent.tools.live_retriever import fetch_live_financials
 

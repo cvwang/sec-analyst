@@ -1,8 +1,7 @@
 """BigQuery Data Store for structured SEC financial metrics with live data fallback."""
 
-import os
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from typing import Dict, List, Optional
+from pydantic import BaseModel
 from agent.config import settings
 from agent.observability.logging_config import log_tool_execution
 from agent.tools.live_retriever import fetch_live_financials
