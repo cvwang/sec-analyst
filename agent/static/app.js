@@ -18,6 +18,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const gcsUriDisplay = document.getElementById("gcsUriDisplay");
 
     let lastAnalysisResponse = null;
+    let isAnalyzing = false;
+    const chatPromptBox = document.querySelector(".chat-prompt-box");
 
     // Fetch initial session history & count
     fetchSessionState();
@@ -26,12 +28,15 @@ document.addEventListener("DOMContentLoaded", () => {
     naturalQueryInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            runAnalysis();
+            if (!isAnalyzing) {
+                runAnalysis();
+            }
         }
     });
 
     if (suggestionChips) {
         suggestionChips.addEventListener("click", (e) => {
+            if (isAnalyzing) return;
             if (e.target.classList.contains("chip")) {
                 const promptText = e.target.getAttribute("data-prompt");
                 if (promptText) {
@@ -59,16 +64,26 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function runAnalysis() {
+        if (isAnalyzing) return;
         const userPrompt = naturalQueryInput.value.trim();
         if (!userPrompt) return;
 
-        // 1. Append User Chat Bubble
-        appendUserMessage(userPrompt);
-        naturalQueryInput.value = "";
+        isAnalyzing = true;
+        naturalQueryInput.disabled = true;
         btnRunQuery.disabled = true;
         btnRunQuery.innerHTML = "⏳";
+        if (chatPromptBox) chatPromptBox.classList.add("disabled");
 
-        // 2. Append Thinking Indicator
+        // 1. Hide suggestion chips on first query submission
+        if (suggestionChips) {
+            suggestionChips.style.display = "none";
+        }
+
+        // 2. Append User Chat Bubble
+        appendUserMessage(userPrompt);
+        naturalQueryInput.value = "";
+
+        // 3. Append Thinking Indicator
         const thinkingId = appendThinkingIndicator();
 
         const payload = {
@@ -102,8 +117,12 @@ document.addEventListener("DOMContentLoaded", () => {
             removeThinkingIndicator(thinkingId);
             appendErrorMessage(err.message);
         } finally {
+            isAnalyzing = false;
+            naturalQueryInput.disabled = false;
             btnRunQuery.disabled = false;
-            btnRunQuery.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
+            btnRunQuery.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
+            if (chatPromptBox) chatPromptBox.classList.remove("disabled");
+            naturalQueryInput.focus();
         }
     }
 

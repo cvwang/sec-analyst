@@ -286,6 +286,12 @@ html, body {
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+.chat-prompt-box.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
 .chat-prompt-box:focus-within {
     border-color: var(--accent-blue) !important;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
@@ -324,19 +330,25 @@ html, body {
 }
 
 .btn-send-circle {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    background: var(--accent-blue);
-    color: white;
-    padding: 0;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all 0.2s ease;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 12px !important;
+    background: var(--accent-blue) !important;
+    color: white !important;
+    padding: 0 !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    transition: all 0.2s ease !important;
+}
+
+.btn-send-circle svg {
+    width: 28px !important;
+    height: 28px !important;
+    stroke-width: 3px !important;
 }
 
 .btn-send-circle:hover {
