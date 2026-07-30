@@ -203,3 +203,64 @@ def test_model_configuration_validation():
 
     agent = FinancialAnalystAgent()
     assert agent.model_name == settings.reasoning_model
+
+
+def test_multiturn_conversational_context_retention():
+    """Evaluates multi-turn context retention ensuring follow-up queries retain active ticker/metric from session history."""
+    class MockGenerateResponse:
+        text = "Amazon.com, Inc. (AMZN) FY2024 Revenue reached $620,130 million."
+
+    class MockModels:
+        def generate_content(self, model, contents):
+            return MockGenerateResponse()
+
+    class MockGenAIClient:
+        models = MockModels()
+
+    orchestrator = RootOrchestrator()
+    orchestrator.analyst_agent.client = MockGenAIClient()
+
+    session_id = "test_multiturn_context_session"
+
+    # Turn 1: Initial request for AMZN
+    turn1_res = orchestrator.dispatch_query(
+        prompt="show me amzn financial data across all years available",
+        session_id=session_id,
+    )
+    assert turn1_res["is_success"] is True
+    assert turn1_res["ticker"] == "AMZN"
+
+    # Turn 2: Follow-up request omitting ticker ("what about 2024?")
+    turn2_res = orchestrator.dispatch_query(
+        prompt="what about 2024?",
+        session_id=session_id,
+    )
+    assert turn2_res["is_success"] is True
+    assert turn2_res["ticker"] == "AMZN"  # Retained AMZN from Turn 1 history instead of defaulting to AAPL
+
+
+def test_multiyear_range_query_expansion():
+    """Evaluates multi-year range query parsing (e.g. 2022-2024) to ensure all intermediate years are retrieved."""
+    class MockGenerateResponse:
+        text = "Amazon.com, Inc. (AMZN) financial metrics for 2022, 2023, and 2024."
+
+    class MockModels:
+        def generate_content(self, model, contents):
+            return MockGenerateResponse()
+
+    class MockGenAIClient:
+        models = MockModels()
+
+    orchestrator = RootOrchestrator()
+    orchestrator.analyst_agent.client = MockGenAIClient()
+
+    parsed = orchestrator.parse_natural_language_intent("show me amzn financial data from 2022-2024")
+    assert parsed["ticker"] == "AMZN"
+    assert parsed["requested_years"] == [2022, 2023, 2024]
+
+    res = orchestrator.dispatch_query(prompt="show me amzn financial data from 2022-2024")
+    assert res["is_success"] is True
+    retrieved_years = [r.fiscal_year for r in res["hybrid_search_result"].primary_metrics]
+    assert 2022 in retrieved_years
+    assert 2023 in retrieved_years
+    assert 2024 in retrieved_years

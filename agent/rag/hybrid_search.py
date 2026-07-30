@@ -15,6 +15,7 @@ class HybridSearchRequest(BaseModel):
     secondary_tickers: List[str] = Field(default_factory=list, description="Secondary tickers for multi-company comparisons.")
     current_year: int = Field(2023, description="Current fiscal year.")
     prior_year: int = Field(2022, description="Prior fiscal year.")
+    requested_years: List[int] = Field(default_factory=list, description="List of fiscal years for multi-year range queries (e.g., [2022, 2023, 2024]).")
     metric_name: str = Field("Revenue", description="Financial metric to analyze.")
     thematic_keyword: Optional[str] = Field(None, description="Keyword for longitudinal tracking (e.g., 'AI', 'R&D', 'supply chain').")
 
@@ -60,24 +61,19 @@ class HybridSearchEngine:
             text_chunks = []
             citations = []
 
-            # 1. Fetch Primary Company Metrics from BigQuery
-            curr_rec = self.bq_store.query_metrics(request.primary_ticker, request.current_year)
-            prior_rec = self.bq_store.query_metrics(request.primary_ticker, request.prior_year)
-
-            if curr_rec:
-                primary_records.append(curr_rec)
-            if prior_rec:
-                primary_records.append(prior_rec)
+            # 1. Fetch Primary Company Metrics from BigQuery for all target years
+            target_years = request.requested_years if request.requested_years else [request.current_year, request.prior_year]
+            for yr in sorted(target_years, reverse=True):
+                rec = self.bq_store.query_metrics(request.primary_ticker, yr)
+                if rec and rec not in primary_records:
+                    primary_records.append(rec)
 
             # 2. Fetch Secondary Company Metrics if peer comparison
             for sec_t in request.secondary_tickers:
-                sec_curr = self.bq_store.query_metrics(sec_t, request.current_year)
-                sec_prior = self.bq_store.query_metrics(sec_t, request.prior_year)
-                if sec_curr:
-                    secondary_metrics_rec = sec_curr
-                    secondary_records.append(sec_curr)
-                if sec_prior:
-                    secondary_records.append(sec_prior)
+                for yr in sorted(target_years, reverse=True):
+                    sec_rec = self.bq_store.query_metrics(sec_t, yr)
+                    if sec_rec and sec_rec not in secondary_records:
+                        secondary_records.append(sec_rec)
 
             # 3. Fetch SEC Document Chunks from Corpus
             if request.query_type == "thematic_tracking":
@@ -85,10 +81,9 @@ class HybridSearchEngine:
                 chunks = self.sec_corpus.search_chunks(keyword=kw)
                 text_chunks.extend(chunks)
             else:
-                p_chunks_curr = self.sec_corpus.search_chunks(ticker=request.primary_ticker, fiscal_year=request.current_year)
-                p_chunks_prior = self.sec_corpus.search_chunks(ticker=request.primary_ticker, fiscal_year=request.prior_year)
-                text_chunks.extend(p_chunks_curr)
-                text_chunks.extend(p_chunks_prior)
+                for yr in target_years:
+                    p_chunks = self.sec_corpus.search_chunks(ticker=request.primary_ticker, fiscal_year=yr)
+                    text_chunks.extend(p_chunks)
 
                 for sec_t in request.secondary_tickers:
                     sec_chunks = self.sec_corpus.search_chunks(ticker=sec_t)
