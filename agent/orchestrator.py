@@ -85,8 +85,8 @@ class FinancialAnalystAgent:
         if api_key:
             try:
                 return genai.Client(api_key=api_key)
-            except Exception:
-                pass
+            except Exception as e:
+                log_tool_execution("init_genai_client", "outcome", {"error_api_key": str(e)}, status="ERROR")
 
         try:
             return genai.Client(
@@ -94,7 +94,8 @@ class FinancialAnalystAgent:
                 project=settings.gcp_project_id,
                 location=settings.gcp_region,
             )
-        except Exception:
+        except Exception as e:
+            log_tool_execution("init_genai_client", "outcome", {"error_vertex": str(e)}, status="ERROR")
             return None
 
     @trace_span("FinancialAnalystAgent.run_analysis")
@@ -178,7 +179,7 @@ Directly answer the user prompt above using the grounded context and tool output
         model_used = "deterministic-fallback"
 
         if self.client:
-            models_to_try = [self.model_name, "gemini-3.5-flash", "gemini-2.5-pro"]
+            models_to_try = [self.model_name, settings.tool_model]
             for model_id in models_to_try:
                 try:
                     log_tool_execution("vertex_ai_generate_content", "intent", {"model": model_id, "ticker": ticker})
@@ -234,7 +235,40 @@ class RootOrchestrator:
         self.hybrid_engine = HybridSearchEngine()
 
     def parse_natural_language_intent(self, prompt: str, session_id: str = "default_session") -> Dict[str, Any]:
-        """Uses Gemini 3.5 Flash / regex heuristic fallback to parse freeform user chat prompts into structured entities."""
+        """Uses Gemini 3.5 Flash (tool_model) with regex heuristic fallback to parse freeform user chat prompts into structured entities."""
+        # 1. Attempt LLM Intent Parsing with tool_model (Gemini 3.5 Flash)
+        if self.analyst_agent and self.analyst_agent.client:
+            try:
+                log_tool_execution("intent_classification_tool_model", "intent", {"model": self.tool_model, "prompt": prompt})
+                intent_prompt = f"""
+Extract financial query intent as JSON with keys: query_type, primary_ticker, secondary_tickers, current_year, prior_year, requested_years, metric_name.
+Allowed query_type values: "variance_analysis", "peer_comparison", "thematic_tracking", "financial_summary".
+Allowed metric_name values: "Revenue", "Operating Income", "Net Income".
+
+User Query: "{prompt}"
+Return ONLY valid JSON matching this schema without markdown code blocks.
+"""
+                resp = self.analyst_agent.client.models.generate_content(
+                    model=self.tool_model,
+                    contents=intent_prompt,
+                )
+                import json
+                cleaned_text = resp.text.strip().replace("```json", "").replace("```", "").strip()
+                parsed_json = json.loads(cleaned_text)
+                log_tool_execution("intent_classification_tool_model", "outcome", parsed_json, status="SUCCESS")
+                return {
+                    "query_type": parsed_json.get("query_type", "financial_summary"),
+                    "ticker": parsed_json.get("primary_ticker", "AAPL").upper(),
+                    "secondary_tickers": parsed_json.get("secondary_tickers", []),
+                    "current_year": int(parsed_json.get("current_year", 2023)),
+                    "prior_year": int(parsed_json.get("prior_year", 2022)),
+                    "requested_years": [int(y) for y in parsed_json.get("requested_years", [])],
+                    "metric_name": parsed_json.get("metric_name", "Revenue"),
+                }
+            except Exception as err:
+                log_tool_execution("intent_classification_tool_model", "outcome", {"error": str(err)}, status="ERROR")
+
+        # 2. Fallback Regex Heuristic Parsing
         prompt_upper = prompt.upper()
 
         # Known ticker mappings
