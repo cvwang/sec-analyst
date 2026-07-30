@@ -25,12 +25,14 @@ class FinancialMetricRecord(BaseModel):
 # Curated BigQuery Seed Dataset covering S&P 500 Leaders (2020-2026)
 BIGQUERY_FINANCIAL_DATABASE: Dict[str, Dict[int, FinancialMetricRecord]] = {
     "AAPL": {
+        2025: FinancialMetricRecord(ticker="AAPL", fiscal_year=2025, company_name="Apple Inc.", revenue=410500.0, operating_income=131200.0, net_income=101500.0),
         2024: FinancialMetricRecord(ticker="AAPL", fiscal_year=2024, company_name="Apple Inc.", revenue=391035.0, operating_income=123216.0, net_income=93736.0),
         2023: FinancialMetricRecord(ticker="AAPL", fiscal_year=2023, company_name="Apple Inc.", revenue=383285.0, operating_income=114301.0, net_income=96995.0),
         2022: FinancialMetricRecord(ticker="AAPL", fiscal_year=2022, company_name="Apple Inc.", revenue=394328.0, operating_income=119437.0, net_income=99803.0),
         2021: FinancialMetricRecord(ticker="AAPL", fiscal_year=2021, company_name="Apple Inc.", revenue=365817.0, operating_income=108949.0, net_income=94680.0),
     },
     "MSFT": {
+        2025: FinancialMetricRecord(ticker="MSFT", fiscal_year=2025, company_name="Microsoft Corp", revenue=281700.0, operating_income=127400.0, net_income=102300.0),
         2024: FinancialMetricRecord(ticker="MSFT", fiscal_year=2024, company_name="Microsoft Corp", revenue=245122.0, operating_income=109433.0, net_income=88136.0),
         2023: FinancialMetricRecord(ticker="MSFT", fiscal_year=2023, company_name="Microsoft Corp", revenue=211915.0, operating_income=88523.0, net_income=72361.0),
         2022: FinancialMetricRecord(ticker="MSFT", fiscal_year=2022, company_name="Microsoft Corp", revenue=198270.0, operating_income=83383.0, net_income=72738.0),
@@ -41,16 +43,26 @@ BIGQUERY_FINANCIAL_DATABASE: Dict[str, Dict[int, FinancialMetricRecord]] = {
         2024: FinancialMetricRecord(ticker="NVDA", fiscal_year=2024, company_name="NVIDIA Corp", revenue=60922.0, operating_income=32972.0, net_income=29760.0),
         2023: FinancialMetricRecord(ticker="NVDA", fiscal_year=2023, company_name="NVIDIA Corp", revenue=26974.0, operating_income=4224.0, net_income=4368.0),
         2022: FinancialMetricRecord(ticker="NVDA", fiscal_year=2022, company_name="NVIDIA Corp", revenue=26914.0, operating_income=10041.0, net_income=9752.0),
+        2021: FinancialMetricRecord(ticker="NVDA", fiscal_year=2021, company_name="NVIDIA Corp", revenue=16675.0, operating_income=4532.0, net_income=4332.0),
+        2020: FinancialMetricRecord(ticker="NVDA", fiscal_year=2020, company_name="NVIDIA Corp", revenue=10918.0, operating_income=2846.0, net_income=2796.0),
     },
     "GOOGL": {
+        2025: FinancialMetricRecord(ticker="GOOGL", fiscal_year=2025, company_name="Alphabet Inc.", revenue=350200.0, operating_income=106800.0, net_income=86500.0),
         2024: FinancialMetricRecord(ticker="GOOGL", fiscal_year=2024, company_name="Alphabet Inc.", revenue=307394.0, operating_income=91480.0, net_income=73795.0),
         2023: FinancialMetricRecord(ticker="GOOGL", fiscal_year=2023, company_name="Alphabet Inc.", revenue=307394.0, operating_income=84293.0, net_income=73795.0),
         2022: FinancialMetricRecord(ticker="GOOGL", fiscal_year=2022, company_name="Alphabet Inc.", revenue=282836.0, operating_income=74842.0, net_income=59972.0),
     },
     "AMZN": {
+        2025: FinancialMetricRecord(ticker="AMZN", fiscal_year=2025, company_name="Amazon.com Inc.", revenue=690400.0, operating_income=74200.0, net_income=61800.0),
         2024: FinancialMetricRecord(ticker="AMZN", fiscal_year=2024, company_name="Amazon.com Inc.", revenue=620130.0, operating_income=60600.0, net_income=50400.0),
         2023: FinancialMetricRecord(ticker="AMZN", fiscal_year=2023, company_name="Amazon.com Inc.", revenue=574785.0, operating_income=36852.0, net_income=30425.0),
         2022: FinancialMetricRecord(ticker="AMZN", fiscal_year=2022, company_name="Amazon.com Inc.", revenue=513983.0, operating_income=12248.0, net_income=-2722.0),
+    },
+    "TSLA": {
+        2025: FinancialMetricRecord(ticker="TSLA", fiscal_year=2025, company_name="Tesla, Inc.", revenue=112500.0, operating_income=11800.0, net_income=9800.0),
+        2024: FinancialMetricRecord(ticker="TSLA", fiscal_year=2024, company_name="Tesla, Inc.", revenue=97665.0, operating_income=8889.0, net_income=7100.0),
+        2023: FinancialMetricRecord(ticker="TSLA", fiscal_year=2023, company_name="Tesla, Inc.", revenue=96773.0, operating_income=8891.0, net_income=7928.0),
+        2022: FinancialMetricRecord(ticker="TSLA", fiscal_year=2022, company_name="Tesla, Inc.", revenue=81462.0, operating_income=13656.0, net_income=12583.0),
     },
 }
 

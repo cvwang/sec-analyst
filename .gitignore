@@ -31,4 +31,7 @@ FDE Onboarding Project.md
 Individual project instructions.md
 evaluation_results.csv
 fsi_scoping.md
-fsi_tdd.md
+# Raw SEC EDGAR Data Filings
+data/
+data/10k_filings/
+*.md.tmp
