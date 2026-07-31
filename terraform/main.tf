@@ -101,7 +101,7 @@ resource "google_cloud_run_v2_service" "agent_service" {
       }
       env {
         name  = "TOOL_MODEL"
-        value = "gemini-2.5-flash"
+        value = "gemini-3.5-flash"
       }
 
       resources {
