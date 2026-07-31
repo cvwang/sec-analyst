@@ -10,14 +10,11 @@ from agent.observability.logging_config import log_tool_execution
 class HybridSearchRequest(BaseModel):
     """Input request for hybrid search RAG engine."""
 
-    query_type: str = Field(..., description="'variance_analysis', 'peer_comparison', or 'thematic_tracking'")
-    primary_ticker: str = Field(..., description="Primary ticker symbol (e.g., AAPL).")
-    secondary_tickers: List[str] = Field(default_factory=list, description="Secondary tickers for multi-company comparisons.")
-    current_year: int = Field(2023, description="Current fiscal year.")
-    prior_year: int = Field(2022, description="Prior fiscal year.")
-    requested_years: List[int] = Field(default_factory=list, description="List of fiscal years for multi-year range queries (e.g., [2022, 2023, 2024]).")
-    metric_name: str = Field("Revenue", description="Financial metric to analyze.")
-    thematic_keyword: Optional[str] = Field(None, description="Keyword for longitudinal tracking (e.g., 'AI', 'R&D', 'supply chain').")
+    query_type: str = Field("financial_summary", description="'variance_analysis', 'peer_comparison', or 'thematic_tracking'")
+    tickers: List[str] = Field(default_factory=list, description="Target ticker symbols for analysis (e.g. ['AAPL'], ['AAPL', 'MSFT']).")
+    requested_years: List[int] = Field(default_factory=list, description="List of fiscal years for queries (e.g., [2022, 2023, 2024]).")
+    metric_name: str = Field("", description="Financial metric to analyze.")
+    thematic_keyword: str = Field("", description="Keyword for longitudinal tracking (e.g., 'AI', 'R&D', 'supply chain').")
 
 
 class HybridSearchResult(BaseModel):
@@ -41,14 +38,7 @@ class HybridSearchEngine:
         self.sec_corpus = SECCorpusStore()
 
     def execute_hybrid_search(self, request: HybridSearchRequest) -> HybridSearchResult:
-        """Executes metadata-filtered hybrid search combining structured metrics and unstructured text.
-
-        Args:
-            request: HybridSearchRequest containing query parameters.
-
-        Returns:
-            HybridSearchResult with grounded citations and formatted context block.
-        """
+        """Executes metadata-filtered hybrid search combining structured metrics and unstructured text."""
         log_tool_execution(
             tool_name="execute_hybrid_search",
             stage="intent",
@@ -61,15 +51,19 @@ class HybridSearchEngine:
             text_chunks = []
             citations = []
 
-            # 1. Fetch Primary Company Metrics from BigQuery for all target years
-            target_years = request.requested_years if request.requested_years else [request.current_year, request.prior_year]
+            target_tickers = request.tickers if request.tickers else ["AAPL"]
+            primary_ticker = target_tickers[0]
+            secondary_tickers = target_tickers[1:]
+
+            # 1. Fetch Primary Company Metrics from BigQuery for all requested years
+            target_years = request.requested_years if request.requested_years else [2023, 2022]
             for yr in sorted(target_years, reverse=True):
-                rec = self.bq_store.query_metrics(request.primary_ticker, yr)
+                rec = self.bq_store.query_metrics(primary_ticker, yr)
                 if rec and rec not in primary_records:
                     primary_records.append(rec)
 
             # 2. Fetch Secondary Company Metrics if peer comparison
-            for sec_t in request.secondary_tickers:
+            for sec_t in secondary_tickers:
                 for yr in sorted(target_years, reverse=True):
                     sec_rec = self.bq_store.query_metrics(sec_t, yr)
                     if sec_rec and sec_rec not in secondary_records:
@@ -82,10 +76,10 @@ class HybridSearchEngine:
                 text_chunks.extend(chunks)
             else:
                 for yr in target_years:
-                    p_chunks = self.sec_corpus.search_chunks(ticker=request.primary_ticker, fiscal_year=yr)
+                    p_chunks = self.sec_corpus.search_chunks(ticker=primary_ticker, fiscal_year=yr)
                     text_chunks.extend(p_chunks)
 
-                for sec_t in request.secondary_tickers:
+                for sec_t in secondary_tickers:
                     sec_chunks = self.sec_corpus.search_chunks(ticker=sec_t)
                     text_chunks.extend(sec_chunks)
 

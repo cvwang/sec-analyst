@@ -162,13 +162,18 @@ class SECCorpusStore:
         for chunk in self.corpus:
             if ticker and chunk.ticker.upper() != ticker.upper():
                 continue
-            if target_years and chunk.fiscal_year not in target_years:
-                continue
-            if keyword:
-                kw_lower = keyword.lower()
-                content_lower = chunk.content.lower()
-                kw_match = any(kw_lower in k.lower() for k in chunk.keywords) or (kw_lower in content_lower)
-                if not kw_match:
-                    continue
-            matches.append(chunk)
         return matches
+
+
+def search_sec_filing_chunks_tool(ticker: str = "", fiscal_year: int = 0, keyword: str = "") -> list:
+    """Searches unstructured SEC 10-K filing disclosures (MD&A and Risk Factors) grounded in GCS for a given ticker, fiscal year, or keyword.
+
+    Args:
+        ticker: Ticker symbol (e.g. AAPL, MSFT, NVDA).
+        fiscal_year: Target fiscal year (e.g. 2022, 2023, 2024).
+        keyword: Keyword filter (e.g. 'AI', 'supply chain', 'inflation').
+    """
+    store = SECCorpusStore()
+    yr = fiscal_year if fiscal_year > 0 else None
+    chunks = store.search_chunks(ticker=ticker or None, fiscal_year=yr, keyword=keyword or None)
+    return [c.model_dump() for c in chunks]

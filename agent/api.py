@@ -35,14 +35,12 @@ orchestrator = RootOrchestrator()
 class AnalysisApiRequest(BaseModel):
     """Input payload for financial analysis REST API."""
 
-    prompt: Optional[str] = Field(None, description="Freeform natural language chat prompt.")
-    query_type: str = Field("variance_analysis", description="'variance_analysis', 'peer_comparison', or 'thematic_tracking'")
-    ticker: Optional[str] = Field(None, description="Primary ticker symbol.")
-    current_year: Optional[int] = Field(None, description="Current fiscal year.")
-    prior_year: Optional[int] = Field(None, description="Prior fiscal year.")
-    metric_name: Optional[str] = Field(None, description="Financial metric name.")
-    secondary_tickers: List[str] = Field(default_factory=list, description="Secondary tickers for peer comparison.")
-    thematic_keyword: Optional[str] = Field(None, description="Thematic tracking keyword (e.g., 'AI', 'R&D').")
+    prompt: str = Field("", description="Freeform natural language chat prompt.")
+    tickers: List[str] = Field(default_factory=list, description="Target ticker symbols for analysis (e.g. ['AAPL'], ['AAPL', 'MSFT']).")
+    requested_years: List[int] = Field(default_factory=list, description="List of fiscal years for analysis.")
+    metric_name: str = Field("", description="Financial metric name.")
+    query_type: str = Field("financial_summary", description="'variance_analysis', 'peer_comparison', or 'thematic_tracking'")
+    thematic_keyword: str = Field("", description="Thematic tracking keyword (e.g., 'AI', 'R&D').")
     session_id: str = Field("user_session_001", description="Persistent conversational session ID.")
 
 
@@ -80,13 +78,6 @@ def analyze_financials(request: AnalysisApiRequest):
     try:
         response = orchestrator.dispatch_query(
             prompt=request.prompt,
-            query_type=request.query_type,
-            ticker=request.ticker,
-            current_year=request.current_year,
-            prior_year=request.prior_year,
-            metric_name=request.metric_name,
-            secondary_tickers=request.secondary_tickers,
-            thematic_keyword=request.thematic_keyword,
             session_id=request.session_id,
         )
 
@@ -97,7 +88,7 @@ def analyze_financials(request: AnalysisApiRequest):
         log_tool_execution(
             tool_name="api_analyze_financials",
             stage="outcome",
-            payload={"ticker": request.ticker, "status": "SUCCESS" if response.get("is_success") else "FAILURE"},
+            payload={"tickers": request.tickers, "status": "SUCCESS" if response.get("is_success") else "FAILURE"},
             status="SUCCESS" if response.get("is_success") else "ERROR",
         )
         return response

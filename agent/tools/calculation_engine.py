@@ -145,3 +145,27 @@ def calculate_financial_variance(request: VarianceRequest) -> VarianceResult:
         formatted_summary=formatted_summary,
         is_success=True,
     )
+
+
+def calculate_financial_variance_tool(
+    ticker: str,
+    metric_name: str,
+    current_period_value: float,
+    prior_period_value: float,
+) -> dict:
+    """Calculates absolute change ($) and percentage change (%) variance between current and prior period financial metrics.
+
+    Args:
+        ticker: Ticker symbol (e.g. AAPL, MSFT, NVDA).
+        metric_name: Name of metric (e.g. Revenue, Operating Income, Net Income).
+        current_period_value: Metric value in current period.
+        prior_period_value: Metric value in prior comparison period.
+    """
+    req = VarianceRequest(
+        ticker=ticker,
+        metric_name=metric_name,
+        current_period_value=current_period_value,
+        prior_period_value=prior_period_value,
+    )
+    res = calculate_financial_variance(req)
+    return res.model_dump()

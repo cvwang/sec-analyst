@@ -77,15 +77,11 @@ def run_cli_session():
             # Parse natural prompt or structured parameters
             params = parse_natural_prompt(user_input)
 
-            print(f"\n🚀 Running Agent for {params['ticker']} ({params['current_year']} vs {params['prior_year']} {params['metric_name']})...\n")
+            print(f"\n🚀 Running Agent for session '{session_id}'...\n")
 
             # Dispatch Query with persistent session ID
             res = orchestrator.dispatch_query(
-                query_type="variance_analysis",
-                ticker=params["ticker"],
-                current_year=params["current_year"],
-                prior_year=params["prior_year"],
-                metric_name=params["metric_name"],
+                prompt=user_input,
                 session_id=session_id,
             )
 
@@ -108,15 +104,11 @@ def run_cli_session():
 
             # Check for GCS export request in prompt
             if "export" in user_input.lower() or "save" in user_input.lower():
-                gcs_uri = f"gs://{settings.gcp_project_id}-sec-reports/{params['ticker'].lower()}_{params['current_year']}_report.md"
+                gcs_uri = f"gs://{settings.gcp_project_id}-sec-reports/{res.get('ticker', 'report').lower()}_report.md"
                 print(f"\n🔒 Requesting GCS export: {gcs_uri}")
 
                 unapproved = orchestrator.dispatch_query(
-                    query_type="variance_analysis",
-                    ticker=params["ticker"],
-                    current_year=params["current_year"],
-                    prior_year=params["prior_year"],
-                    metric_name=params["metric_name"],
+                    prompt=user_input,
                     session_id=session_id,
                     export_gcs_uri=gcs_uri,
                     human_approved_export=False,
@@ -127,11 +119,7 @@ def run_cli_session():
                 confirm = input("\nGrant Human Approval for GCS Export? (y/n): ").strip().lower()
                 if confirm in ("y", "yes"):
                     approved = orchestrator.dispatch_query(
-                        query_type="variance_analysis",
-                        ticker=params["ticker"],
-                        current_year=params["current_year"],
-                        prior_year=prior_year,
-                        metric_name=params["metric_name"],
+                        prompt=user_input,
                         session_id=session_id,
                         export_gcs_uri=gcs_uri,
                         human_approved_export=True,

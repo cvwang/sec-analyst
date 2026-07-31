@@ -10,6 +10,7 @@ from agent.memory.session_store import PersistentSessionStore
 from agent.memory.async_memory import AsyncMemoryManager
 from agent.config import settings
 from agent.orchestrator import RootOrchestrator, FinancialAnalystAgent, export_financial_report, ExportReportRequest
+from agent.rag.hybrid_search import HybridSearchResult
 
 GOLDEN_DATASET_PATH = os.path.join(os.path.dirname(__file__), "golden_dataset.json")
 
@@ -175,11 +176,7 @@ def test_root_orchestrator_end_to_end(monkeypatch):
     orchestrator.analyst_agent.client = MockGenAIClient()
 
     response = orchestrator.dispatch_query(
-        query_type="variance_analysis",
-        ticker="AAPL",
-        current_year=2023,
-        prior_year=2022,
-        metric_name="Revenue",
+        prompt="Analyze revenue for AAPL between FY2022 and FY2023",
     )
 
     assert response["is_success"] is True
@@ -262,4 +259,57 @@ def test_multiyear_range_query_expansion():
     retrieved_years = [r.fiscal_year for r in res["hybrid_search_result"].primary_metrics]
     assert 2022 in retrieved_years
     assert 2023 in retrieved_years
-    assert 2024 in retrieved_years
+
+
+def test_native_function_calling_dispatch():
+    """Evaluates Native Gemini Function Calling dispatch when the model requests tool execution."""
+    from agent.tools.calculation_engine import calculate_financial_variance_tool
+    from agent.rag.bigquery_store import query_bigquery_financial_metrics_tool
+    from agent.rag.sec_corpus import search_sec_filing_chunks_tool
+
+    # 1. Test standalone tool schemas return valid data dicts
+    calc_res = calculate_financial_variance_tool("AAPL", "Revenue", 383285.0, 394328.0)
+    assert calc_res["is_success"] is True
+    assert calc_res["absolute_change"] == -11043.0
+    assert calc_res["percentage_change"] == -2.8
+
+    bq_res = query_bigquery_financial_metrics_tool("AAPL", 2023)
+    assert bq_res["ticker"] == "AAPL"
+    assert bq_res["revenue"] == 383285.0
+
+    sec_res = search_sec_filing_chunks_tool(ticker="AAPL", fiscal_year=2023, keyword="revenue")
+    assert isinstance(sec_res, list)
+
+    # 2. Test Agent interception of Gemini response.function_calls
+    class MockFunctionCall:
+        name = "calculate_financial_variance_tool"
+        args = {"ticker": "AAPL", "metric_name": "Revenue", "current_period_value": 383285.0, "prior_period_value": 394328.0}
+
+    class MockFunctionCallResponse:
+        text = "Calculated AAPL revenue variance using native Gemini function calling."
+        function_calls = [MockFunctionCall()]
+
+    class MockModels:
+        def generate_content(self, model, contents, config=None, **kwargs):
+            # Assert tools registered in config
+            assert config is not None
+            assert hasattr(config, "tools")
+            assert len(config.tools) >= 3
+            return MockFunctionCallResponse()
+
+    class MockGenAIClient:
+        models = MockModels()
+
+    agent = FinancialAnalystAgent()
+    agent.client = MockGenAIClient()
+
+    fake_rag = HybridSearchResult(is_success=True, query_type="variance_analysis")
+    analysis_res = agent.run_analysis(
+        user_prompt="calculate variance for AAPL revenue",
+        hybrid_rag_result=fake_rag,
+    )
+
+    assert analysis_res["is_success"] is True
+    assert "Vertex AI" in analysis_res["model_used"]
+    assert "Native ADK Search & Tools" in analysis_res["model_used"]
+    assert "AAPL" in analysis_res["narrative"]

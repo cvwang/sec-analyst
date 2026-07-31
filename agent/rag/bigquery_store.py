@@ -82,11 +82,16 @@ class BigQueryFinancialStore:
         start_year: int,
         end_year: int,
     ) -> List[FinancialMetricRecord]:
-        """Queries multi-company metrics across a range of fiscal years for comparative RAG."""
-        results = []
-        for t in tickers:
-            for yr in range(start_year, end_year + 1):
-                rec = self.query_metrics(t, yr)
-                if rec:
-                    results.append(rec)
         return results
+
+
+def query_bigquery_financial_metrics_tool(ticker: str, fiscal_year: int) -> dict:
+    """Queries structured financial metrics (Revenue, Operating Income, Net Income) directly from GCP BigQuery for a given ticker and fiscal year.
+
+    Args:
+        ticker: Ticker symbol (e.g. AAPL, MSFT, NVDA).
+        fiscal_year: Target fiscal year (e.g. 2022, 2023, 2024).
+    """
+    store = BigQueryFinancialStore()
+    rec = store.query_metrics(ticker=ticker, fiscal_year=fiscal_year)
+    return rec.model_dump() if rec else {"error": f"No BigQuery financial metrics found for {ticker} FY{fiscal_year}"}
