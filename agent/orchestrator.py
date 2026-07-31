@@ -4,6 +4,7 @@ import os
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from google import genai
+from google.genai import types
 from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
 from agent.tools.calculation_engine import calculate_financial_variance, VarianceRequest
@@ -179,15 +180,27 @@ Directly answer the user prompt above using the grounded context and tool output
 
         if self.client:
             models_to_try = [self.model_name, settings.tool_model]
+            datastore_path = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore"
+
             for model_id in models_to_try:
                 try:
-                    log_tool_execution("vertex_ai_generate_content", "intent", {"model": model_id, "ticker": ticker})
+                    log_tool_execution("vertex_ai_generate_content", "intent", {"model": model_id, "ticker": ticker, "datastore": datastore_path})
+                    
+                    # Native ADK / Google GenAI SDK Vertex AI Search Retrieval Tool Binding
+                    search_tool = types.Tool(
+                        retrieval=types.Retrieval(
+                            vertex_ai_search=types.VertexAISearch(datastore=datastore_path)
+                        )
+                    )
+                    config = types.GenerateContentConfig(tools=[search_tool])
+
                     response = self.client.models.generate_content(
                         model=model_id,
                         contents=prompt,
+                        config=config,
                     )
                     narrative = response.text.strip()
-                    model_used = f"Vertex AI ({model_id})"
+                    model_used = f"Vertex AI ({model_id} + Native ADK Search)"
                     log_tool_execution("vertex_ai_generate_content", "outcome", {"model": model_id, "status": "SUCCESS"})
                     break
                 except Exception as err:

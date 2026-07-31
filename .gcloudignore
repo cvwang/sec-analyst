@@ -6,3 +6,12 @@ __pycache__/
 *.log
 agent_sessions.json
 .DS_Store
+
+# Ignore raw SEC filings so Cloud Run & Argolis use Vertex AI Search & GCS exclusively
+data/
+data/10k_filings/
+*.md.tmp
+
+# Frontend local build artifacts
+frontend/node_modules/
+frontend/.vite/

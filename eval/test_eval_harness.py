@@ -165,7 +165,7 @@ def test_root_orchestrator_end_to_end(monkeypatch):
         text = "### Executive Summary for AAPL (Revenue)\nApple Inc. FY2023 10-K reported Total Net Sales of $383,285 million, down 2.8% due to macroeconomic headwinds in hardware sales."
 
     class MockModels:
-        def generate_content(self, model, contents):
+        def generate_content(self, model, contents, **kwargs):
             return MockGenerateResponse()
 
     class MockGenAIClient:
@@ -210,7 +210,7 @@ def test_multiturn_conversational_context_retention():
         text = "Amazon.com, Inc. (AMZN) FY2024 Revenue reached $620,130 million."
 
     class MockModels:
-        def generate_content(self, model, contents):
+        def generate_content(self, model, contents, **kwargs):
             return MockGenerateResponse()
 
     class MockGenAIClient:
@@ -244,7 +244,7 @@ def test_multiyear_range_query_expansion():
         text = "Amazon.com, Inc. (AMZN) financial metrics for 2022, 2023, and 2024."
 
     class MockModels:
-        def generate_content(self, model, contents):
+        def generate_content(self, model, contents, **kwargs):
             return MockGenerateResponse()
 
     class MockGenAIClient:
