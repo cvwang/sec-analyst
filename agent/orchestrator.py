@@ -118,8 +118,8 @@ class FinancialAnalystAgent:
     ) -> Dict[str, Any]:
         """Synthesizes grounded financial narrative using Vertex AI Gemini model from RAG context."""
         meta = metadata or {}
-        t_list = tickers or meta.get("tickers") or ([hybrid_rag_result.primary_metrics[0].ticker] if hybrid_rag_result.primary_metrics else ["AAPL"])
-        ticker = t_list[0]
+        tickers = tickers or meta.get("tickers") or ([hybrid_rag_result.primary_metrics[0].ticker] if hybrid_rag_result.primary_metrics else ["AAPL"])
+        ticker = tickers[0]
         m_name = metric_name or meta.get("metric_name") or "Revenue"
         q_type = query_type or hybrid_rag_result.query_type or meta.get("query_type") or "financial_summary"
 
@@ -199,7 +199,7 @@ Directly answer the user prompt above using the grounded context and tool output
                         config=config,
                     )
 
-                    # Handle native Gemini Function Calls if requested by the model
+                    # Intercept and execute Gemini Native Function Calls
                     if getattr(response, "function_calls", None):
                         for call in response.function_calls:
                             tool_name = call.name
@@ -224,40 +224,6 @@ Directly answer the user prompt above using the grounded context and tool output
                     break
                 except Exception as err:
                     log_tool_execution("vertex_ai_generate_content", "outcome", {"model": model_id, "error": str(err)}, status="ERROR")
-                    # Fallback retry without VertexAISearch tool (in case client is API key or datastore is unavailable)
-                    try:
-                        fallback_tools = [
-                            calculate_financial_variance_tool,
-                            query_bigquery_financial_metrics_tool,
-                            search_sec_filing_chunks_tool,
-                        ]
-                        config = types.GenerateContentConfig(tools=fallback_tools)
-                        response = self.client.models.generate_content(
-                            model=model_id,
-                            contents=prompt,
-                            config=config,
-                        )
-                        if getattr(response, "function_calls", None):
-                            for call in response.function_calls:
-                                tool_name = call.name
-                                tool_args = dict(call.args) if call.args else {}
-                                log_tool_execution("gemini_native_function_call", "intent", {"tool": tool_name, "args": tool_args})
-                                if tool_name == "calculate_financial_variance_tool":
-                                    tool_res = calculate_financial_variance_tool(**tool_args)
-                                    log_tool_execution("gemini_native_function_call", "outcome", tool_res)
-                                elif tool_name == "query_bigquery_financial_metrics_tool":
-                                    tool_res = query_bigquery_financial_metrics_tool(**tool_args)
-                                    log_tool_execution("gemini_native_function_call", "outcome", tool_res)
-                                elif tool_name == "search_sec_filing_chunks_tool":
-                                    tool_res = search_sec_filing_chunks_tool(**tool_args)
-                                    log_tool_execution("gemini_native_function_call", "outcome", {"count": len(tool_res)})
-
-                        narrative = response.text.strip() if response.text else ""
-                        if narrative:
-                            model_used = f"Gemini ({model_id} + Native Function Tools)"
-                            break
-                    except Exception as fallback_err:
-                        log_tool_execution("vertex_ai_generate_content_fallback", "outcome", {"model": model_id, "error": str(fallback_err)}, status="ERROR")
 
         if not narrative:
             return {
@@ -436,38 +402,34 @@ Return ONLY valid JSON matching this schema:
         thematic_keyword: str = "",
         export_gcs_uri: str = "",
         human_approved_export: bool = False,
-        **kwargs,
     ) -> Dict[str, Any]:
         """Routes user queries to sub-agents, manages persistent session memory, and applies history compaction."""
-        t_list = tickers or kwargs.get("tickers") or ([kwargs.get("ticker")] if kwargs.get("ticker") else [])
-        req_years = requested_years or kwargs.get("requested_years") or kwargs.get("years") or []
-
         if prompt:
             parsed = self.parse_natural_language_intent(prompt, session_id=session_id)
             query_type = query_type or parsed.get("query_type", "financial_summary")
-            t_list = t_list or parsed.get("tickers", [])
+            tickers = tickers or parsed.get("tickers", [])
             metric_name = metric_name or parsed.get("metric_name", "Revenue")
             thematic_keyword = thematic_keyword or parsed.get("thematic_keyword", "")
-            req_years = req_years or parsed.get("requested_years", [])
+            requested_years = requested_years or parsed.get("requested_years", [])
 
         query_type = query_type or "financial_summary"
-        t_list = [t.upper() for t in t_list] if t_list else ["AAPL"]
-        primary_ticker = t_list[0]
+        tickers = [t.upper() for t in tickers] if tickers else ["AAPL"]
+        primary_ticker = tickers[0]
 
         # 1. Retrieve persistent session history and apply compaction
         raw_history = self.session_store.get_session_history(session_id)
         compacted = self.compactor.compact_history(raw_history)
 
         # 2. Context caching for filing documents
-        cache_key = f"{primary_ticker}_{req_years[0] if req_years else 2023}_10K"
+        cache_key = f"{primary_ticker}_{requested_years[0] if requested_years else 2023}_10K"
         self.cache_manager.get_or_create_cache(cache_key, content=f"SEC 10K filing data for {primary_ticker}")
 
         # 3. Execute Hybrid Search RAG tailored to intent query_type
         rag_res = self.hybrid_engine.execute_hybrid_search(
             HybridSearchRequest(
                 query_type=query_type,
-                tickers=t_list,
-                requested_years=req_years,
+                tickers=tickers,
+                requested_years=requested_years,
                 metric_name=metric_name,
                 thematic_keyword=thematic_keyword,
             )
@@ -478,11 +440,11 @@ Return ONLY valid JSON matching this schema:
             user_prompt=prompt or f"Analyze financial disclosures for {primary_ticker}.",
             hybrid_rag_result=rag_res,
             context_summary=compacted.summary_of_older_turns,
-            tickers=t_list,
-            requested_years=req_years,
+            tickers=tickers,
+            requested_years=requested_years,
             metric_name=metric_name,
             query_type=query_type,
-            metadata={"ticker": primary_ticker, "tickers": t_list, "metric_name": metric_name, "query_type": query_type},
+            metadata={"ticker": primary_ticker, "tickers": tickers, "metric_name": metric_name, "query_type": query_type},
         )
 
         if not analysis_res.get("is_success"):
@@ -494,7 +456,7 @@ Return ONLY valid JSON matching this schema:
             session_id=session_id,
             user_query=user_q,
             agent_response=analysis_res["narrative"],
-            metadata={"ticker": primary_ticker, "tickers": t_list, "metric": metric_name, "query_type": query_type},
+            metadata={"ticker": primary_ticker, "tickers": tickers, "metric": metric_name, "query_type": query_type},
         )
 
         if export_gcs_uri:
@@ -519,7 +481,6 @@ Return ONLY valid JSON matching this schema:
         thematic_keyword: str = "",
         export_gcs_uri: str = "",
         human_approved_export: bool = False,
-        **kwargs,
     ) -> Dict[str, Any]:
         """Asynchronous query dispatch with background memory consolidation."""
         res = self.dispatch_query(
@@ -532,7 +493,6 @@ Return ONLY valid JSON matching this schema:
             thematic_keyword=thematic_keyword,
             export_gcs_uri=export_gcs_uri,
             human_approved_export=human_approved_export,
-            **kwargs,
         )
         if res.get("is_success"):
             await self.async_memory.consolidate_session_memory_async(
