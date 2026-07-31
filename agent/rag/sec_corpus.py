@@ -162,6 +162,11 @@ class SECCorpusStore:
         for chunk in self.corpus:
             if ticker and chunk.ticker.upper() != ticker.upper():
                 continue
+            if target_years and chunk.fiscal_year not in target_years:
+                continue
+            if keyword and (keyword.lower() not in chunk.content.lower() and keyword.lower() not in " ".join(chunk.keywords).lower() and keyword.lower() not in chunk.section.lower()):
+                continue
+            matches.append(chunk)
         return matches
 
 

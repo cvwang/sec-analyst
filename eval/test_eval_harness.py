@@ -326,3 +326,38 @@ def test_native_function_calling_dispatch():
     assert "Vertex AI" in analysis_res["model_used"]
     assert "Native ADK Search & Tools" in analysis_res["model_used"]
     assert "AAPL" in analysis_res["narrative"]
+
+
+def test_thematic_tracking_qualitative_risk_disclosures():
+    """Evaluates qualitative risk factor disclosures RAG retrieval, ticker filtering, and token bounding for Meta/thematic queries."""
+    from agent.rag.hybrid_search import HybridSearchEngine, HybridSearchRequest
+    from agent.rag.sec_corpus import SECCorpusStore
+
+    # 1. Verify SEC corpus store returns non-empty matching chunks for META risk disclosures
+    corpus_store = SECCorpusStore()
+    meta_risk_chunks = corpus_store.search_chunks(ticker="META", keyword="risk")
+    assert len(meta_risk_chunks) > 0
+    assert all(c.ticker == "META" for c in meta_risk_chunks)
+
+    # 2. Verify HybridSearchEngine enforces ticker filtering and caps chunk count to prevent token overflow
+    engine = HybridSearchEngine()
+    req = HybridSearchRequest(
+        query_type="thematic_tracking",
+        tickers=["META"],
+        thematic_keyword="risk",
+    )
+    result = engine.execute_hybrid_search(req)
+    assert result.is_success is True
+    assert len(result.text_chunks) > 0
+    assert len(result.text_chunks) <= 10  # Capped to avoid token window overflow
+    assert all(c.ticker == "META" for c in result.text_chunks)
+
+    # 3. Verify end-to-end RootOrchestrator handles risk disclosures prompt cleanly
+    orchestrator = RootOrchestrator()
+    res = orchestrator.dispatch_query("Analyze Meta risk factors disclosure")
+    assert res["is_success"] is True
+    assert res["tickers"] == ["META"]
+    assert res["narrative"] is not None
+    assert len(res["narrative"]) > 0
+    assert "unable to analyze" not in res["narrative"].lower()
+    assert "unable to provide" not in res["narrative"].lower()

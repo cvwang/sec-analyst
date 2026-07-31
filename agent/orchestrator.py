@@ -3,6 +3,11 @@
 import os
 import json
 import re
+import time
+import requests
+import google.auth
+import google.auth.transport.requests
+from google.cloud import discoveryengine_v1 as discoveryengine
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from google import genai
@@ -75,11 +80,59 @@ def export_financial_report(request: ExportReportRequest, human_approved: bool =
     return result
 
 
+def vertex_ai_search_datastore_tool(query: str) -> str:
+    """Queries the proprietary Vertex AI Search datastore holding SEC 10-K filings.
+
+    Args:
+        query: The natural language question or topic to search for in the filings.
+    """
+    log_tool_execution(
+        tool_name="vertex_ai_search_datastore_tool",
+        stage="intent",
+        payload={"query": query},
+    )
+    chunks = []
+    try:
+        client = discoveryengine.SearchServiceClient()
+        serving_config = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore/servingConfigs/default_search"
+
+        request = discoveryengine.SearchRequest(
+            serving_config=serving_config,
+            query=query,
+            page_size=5,
+        )
+        response = client.search(request)
+
+        for result in response.results:
+            derived_data = result.document.derived_struct_data
+            if "snippets" in derived_data:
+                chunks.append(derived_data["snippets"][0].get("snippet", ""))
+            elif "text" in derived_data:
+                chunks.append(derived_data.get("text", ""))
+    except Exception as e:
+        log_tool_execution("vertex_ai_search_datastore_tool", "outcome", {"error": str(e)}, status="ERROR")
+
+    if not chunks:
+        ticker_match = re.search(r'\b(AAPL|MSFT|NVDA|GOOGL|AMZN|TSLA|META|AMD|JPM|WMT)\b', query, re.IGNORECASE)
+        ticker = ticker_match.group(1).upper() if ticker_match else ""
+        year_match = re.search(r'\b(202\d)\b', query)
+        year = int(year_match.group(1)) if year_match else 0
+        fallback_chunks = search_sec_filing_chunks_tool(ticker=ticker, fiscal_year=year, keyword=query)
+        if not fallback_chunks and ticker:
+            fallback_chunks = search_sec_filing_chunks_tool(ticker=ticker, fiscal_year=year)
+        chunks = [c["content"] for c in fallback_chunks]
+
+    res_str = "\n\n".join(chunks)
+    log_tool_execution("vertex_ai_search_datastore_tool", "outcome", {"count": len(chunks)}, status="SUCCESS")
+    return res_str
+
+
 class FinancialAnalystAgent:
-    """Financial Analyst Agent using Gemini 2.5 Pro on Vertex AI with dynamic LLM tool calling."""
+    """Financial Analyst Agent using Vertex AI Gemini for financial reasoning and dynamic tool calling."""
 
     def __init__(self):
         self.model_name = settings.reasoning_model
+        self.reasoning_model = settings.reasoning_model
         self.constitution = SYSTEM_CONSTITUTION
         self.client = self._init_genai_client()
         self.hybrid_engine = HybridSearchEngine()
@@ -175,23 +228,18 @@ Directly answer the user prompt above using the grounded context and tool output
         model_used = "deterministic-fallback"
 
         datastore_path = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore"
-        log_tool_execution("vertex_ai_generate_content", "intent", {"model": self.model_name, "tickers": tickers, "datastore": datastore_path})
+        log_tool_execution("vertex_ai_generate_content", "intent", {"model": self.reasoning_model, "tickers": tickers, "datastore": datastore_path})
 
-        search_tool = types.Tool(
-            retrieval=types.Retrieval(
-                vertex_ai_search=types.VertexAISearch(datastore=datastore_path)
-            )
-        )
         tools = [
             calculate_financial_variance_tool,
             query_bigquery_financial_metrics_tool,
             search_sec_filing_chunks_tool,
-            search_tool,
+            vertex_ai_search_datastore_tool,
         ]
         config = types.GenerateContentConfig(tools=tools)
 
         response = self.client.models.generate_content(
-            model=self.model_name,
+            model=self.reasoning_model,
             contents=prompt,
             config=config,
         )
@@ -211,13 +259,16 @@ Directly answer the user prompt above using the grounded context and tool output
                 elif tool_name == "search_sec_filing_chunks_tool":
                     tool_res = search_sec_filing_chunks_tool(**tool_args)
                     log_tool_execution("gemini_native_function_call", "outcome", {"count": len(tool_res)})
+                elif tool_name == "vertex_ai_search_datastore_tool":
+                    tool_res = vertex_ai_search_datastore_tool(**tool_args)
+                    log_tool_execution("gemini_native_function_call", "outcome", {"results_length": len(tool_res)})
 
         narrative = response.text.strip() if response.text else ""
         if not narrative and getattr(response, "function_calls", None):
             narrative = f"Executed native tool calls: {[c.name for c in response.function_calls]} successfully."
 
-        model_used = f"Vertex AI ({self.model_name} + Native ADK Search & Tools)"
-        log_tool_execution("vertex_ai_generate_content", "outcome", {"model": self.model_name, "status": "SUCCESS"})
+        model_used = f"Vertex AI ({self.reasoning_model} + Native ADK Search & Tools)"
+        log_tool_execution("vertex_ai_generate_content", "outcome", {"model": self.reasoning_model, "status": "SUCCESS"})
 
         if not narrative:
             return {
