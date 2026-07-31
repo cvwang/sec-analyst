@@ -177,16 +177,10 @@ Directly answer the user prompt above using the grounded context and tool output
         datastore_path = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore"
         log_tool_execution("vertex_ai_generate_content", "intent", {"model": self.model_name, "tickers": tickers, "datastore": datastore_path})
 
-        search_tool = types.Tool(
-            retrieval=types.Retrieval(
-                vertex_ai_search=types.VertexAISearch(datastore=datastore_path)
-            )
-        )
         tools = [
             calculate_financial_variance_tool,
             query_bigquery_financial_metrics_tool,
             search_sec_filing_chunks_tool,
-            search_tool,
         ]
         config = types.GenerateContentConfig(tools=tools)
 

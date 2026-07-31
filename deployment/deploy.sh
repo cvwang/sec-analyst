@@ -24,7 +24,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --project "${PROJECT_ID}" \
   --region "${REGION}" \
   --allow-unauthenticated \
-  --set-env-vars GCP_PROJECT_ID="${PROJECT_ID}",GCP_REGION="${REGION}",REASONING_MODEL="gemini-2.5-pro",TOOL_MODEL="gemini-3.5-flash"
+  --set-env-vars GCP_PROJECT_ID="${PROJECT_ID}",GCP_REGION="${REGION}",REASONING_MODEL="gemini-2.5-pro",TOOL_MODEL="gemini-2.5-flash"
 
 echo "\n=========================================================================="
 echo "🎉 DEPLOYMENT COMPLETE! YOUR APP IS LIVE IN THE CLOUD 🎉"
