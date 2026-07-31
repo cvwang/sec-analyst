@@ -15,6 +15,8 @@ export interface HybridSearchResult {
 export interface AnalysisResponse {
   is_success: boolean;
   ticker?: string;
+  tickers?: string[];
+  requested_years?: number[];
   query_type?: string;
   metric_name?: string;
   narrative?: string;

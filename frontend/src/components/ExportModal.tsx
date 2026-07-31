@@ -13,8 +13,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, lastR
 
   if (!isOpen) return null;
 
-  const ticker = (lastResponse?.ticker || 'AAPL').toUpperCase();
-  const gcsUri = `gs://fde-sec-edgar-reports/${ticker.toLowerCase()}_2023_report.md`;
+  const derivedTicker = lastResponse?.ticker || (lastResponse?.tickers && lastResponse.tickers.length > 0 ? lastResponse.tickers[0] : 'SEC');
+  const ticker = derivedTicker.toUpperCase();
+  const year = lastResponse?.requested_years && lastResponse.requested_years.length > 0 ? lastResponse.requested_years[0] : 2023;
+  const gcsUri = `gs://fde-sec-edgar-reports/${ticker.toLowerCase()}_${year}_report.md`;
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -24,7 +26,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, lastR
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ticker,
-          current_year: 2023,
+          current_year: year,
           destination_gcs_uri: gcsUri,
           report_content: lastResponse?.narrative || 'Financial report content.',
           human_approved: true,

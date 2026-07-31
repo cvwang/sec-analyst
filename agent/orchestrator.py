@@ -212,8 +212,6 @@ Directly answer the user prompt above using the grounded context and tool output
 2. Select ONLY the relevant metrics and fiscal years needed to answer the user's specific request. Do NOT dump unnecessary prior-period comparison tables or unrequested metric breakdowns unless the user explicitly requested a multi-year comparison or growth analysis.
 3. If the user prompt asks a qualitative question (such as business risks or MD&A strategy), answer the qualitative question directly and thoroughly using the grounded 10-K filings context without forcing an unrequested financial variance table.
 """
-        narrative = ""
-        model_used = "deterministic-fallback"
 
         datastore_path = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore"
         log_tool_execution("vertex_ai_generate_content", "intent", {"model": self.reasoning_model, "tickers": tickers, "datastore": datastore_path})

@@ -9,6 +9,7 @@ interface SourceDrawerProps {
 export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse }) => {
   const citations = lastResponse?.citations || [];
   const textChunks = lastResponse?.hybrid_search_result?.text_chunks || [];
+  const derivedTicker = lastResponse?.ticker || (lastResponse?.tickers && lastResponse.tickers.length > 0 ? lastResponse.tickers[0] : 'SEC');
 
   return (
     <aside className="w-full h-full glass-panel border-l border-slate-800 flex flex-col shrink-0 overflow-hidden">
@@ -56,7 +57,7 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse }) => {
             <div className="flex items-center justify-between">
               <span className="font-semibold text-xs text-white flex items-center gap-1.5">
                 <BookmarkCheck className="w-3.5 h-3.5 text-blue-400" />
-                {lastResponse?.ticker || 'SEC'} FY2023 10-K Context
+                {derivedTicker} Grounded Context
               </span>
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
                 Item 7 - MD&A
@@ -66,7 +67,7 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse }) => {
               "Official SEC EDGAR Filing Grounded Context: Audited financial disclosures and period metrics."
             </p>
             <div className="text-[10px] font-mono text-slate-400">
-              Citation: {lastResponse?.ticker || 'SEC'} FY2023 10-K (Item 7 MD&A)
+              Citation: {derivedTicker} 10-K Filing Grounded Context
             </div>
           </div>
         )}
