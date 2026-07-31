@@ -103,15 +103,6 @@ class VertexAISearchClient:
                             )
                         )
 
-            if not results and response.text:
-                results.append(
-                    VertexSearchResult(
-                        id="vertex_grounded_summary",
-                        gcs_uri=f"gs://sec-analyst-sec-reports/filings/{self.datastore_id}.md",
-                        title=f"Vertex AI Search Grounded 10-K Context",
-                        snippet=response.text[:600],
-                    )
-                )
 
             log_tool_execution(
                 tool_name="vertex_ai_search_query",

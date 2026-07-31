@@ -4,9 +4,7 @@ import os
 import json
 import re
 import time
-import requests
 import google.auth
-import google.auth.transport.requests
 from google.cloud import discoveryengine_v1 as discoveryengine
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
@@ -111,16 +109,6 @@ def vertex_ai_search_datastore_tool(query: str) -> str:
                 chunks.append(derived_data.get("text", ""))
     except Exception as e:
         log_tool_execution("vertex_ai_search_datastore_tool", "outcome", {"error": str(e)}, status="ERROR")
-
-    if not chunks:
-        ticker_match = re.search(r'\b(AAPL|MSFT|NVDA|GOOGL|AMZN|TSLA|META|AMD|JPM|WMT)\b', query, re.IGNORECASE)
-        ticker = ticker_match.group(1).upper() if ticker_match else ""
-        year_match = re.search(r'\b(202\d)\b', query)
-        year = int(year_match.group(1)) if year_match else 0
-        fallback_chunks = search_sec_filing_chunks_tool(ticker=ticker, fiscal_year=year, keyword=query)
-        if not fallback_chunks and ticker:
-            fallback_chunks = search_sec_filing_chunks_tool(ticker=ticker, fiscal_year=year)
-        chunks = [c["content"] for c in fallback_chunks]
 
     res_str = "\n\n".join(chunks)
     log_tool_execution("vertex_ai_search_datastore_tool", "outcome", {"count": len(chunks)}, status="SUCCESS")
@@ -370,8 +358,8 @@ Return ONLY valid JSON matching this schema:
             "query_type": parsed["query_type"],
             "tickers": tickers,
             "requested_years": requested_years,
-            "metric_name": parsed["metric_name"],
-            "thematic_keyword": parsed["thematic_keyword"] if "thematic_keyword" in parsed else "",
+            "metric_name": parsed.get("metric_name", ""),
+            "thematic_keyword": parsed.get("thematic_keyword", ""),
         }
 
     @trace_span("RootOrchestrator.dispatch")
@@ -411,8 +399,8 @@ Return ONLY valid JSON matching this schema:
                 query_type=query_type,
                 tickers=tickers,
                 requested_years=requested_years,
-                metric_name=metric_name,
-                thematic_keyword=thematic_keyword,
+                metric_name=metric_name or "",
+                thematic_keyword=thematic_keyword or "",
             )
         )
 

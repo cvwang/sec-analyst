@@ -328,10 +328,21 @@ def test_native_function_calling_dispatch():
     assert "AAPL" in analysis_res["narrative"]
 
 
-def test_thematic_tracking_qualitative_risk_disclosures():
+def test_thematic_tracking_qualitative_risk_disclosures(monkeypatch):
     """Evaluates qualitative risk factor disclosures RAG retrieval, ticker filtering, and token bounding for Meta/thematic queries."""
     from agent.rag.hybrid_search import HybridSearchEngine, HybridSearchRequest
     from agent.rag.sec_corpus import SECCorpusStore
+    from agent.rag.vertex_search import VertexSearchResult, VertexAISearchClient
+
+    mock_results = [
+        VertexSearchResult(
+            id="chunk_1",
+            gcs_uri="gs://sec-analyst-sec-reports/filings/META_2023_10K.md",
+            title="Meta Platforms Inc. 10-K Item 1A Risk Factors",
+            snippet="Meta Platforms, Inc. faces significant competition in advertising, user engagement risks, regulatory scrutiny over data privacy, and investments in AI infrastructure.",
+        )
+    ]
+    monkeypatch.setattr(VertexAISearchClient, "search_filings", lambda self, query, page_size=5: mock_results)
 
     # 1. Verify SEC corpus store returns non-empty matching chunks for META risk disclosures
     corpus_store = SECCorpusStore()
@@ -358,6 +369,7 @@ def test_thematic_tracking_qualitative_risk_disclosures():
     assert res["is_success"] is True
     assert res["tickers"] == ["META"]
     assert res["narrative"] is not None
+
     assert len(res["narrative"]) > 0
     assert "unable to analyze" not in res["narrative"].lower()
     assert "unable to provide" not in res["narrative"].lower()

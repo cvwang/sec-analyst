@@ -13,8 +13,8 @@ class HybridSearchRequest(BaseModel):
     query_type: str = Field("financial_summary", description="'variance_analysis', 'peer_comparison', or 'thematic_tracking'")
     tickers: List[str] = Field(default_factory=list, description="Target ticker symbols for analysis (e.g. ['AAPL'], ['AAPL', 'MSFT']).")
     requested_years: List[int] = Field(default_factory=list, description="List of fiscal years for queries (e.g., [2022, 2023, 2024]).")
-    metric_name: str = Field("", description="Financial metric to analyze.")
-    thematic_keyword: str = Field("", description="Keyword for longitudinal tracking (e.g., 'AI', 'R&D', 'supply chain').")
+    metric_name: Optional[str] = Field("", description="Financial metric to analyze.")
+    thematic_keyword: Optional[str] = Field("", description="Keyword for longitudinal tracking (e.g., 'AI', 'R&D', 'supply chain').")
 
 
 class HybridSearchResult(BaseModel):
