@@ -163,11 +163,14 @@ def test_context_cache_manager():
 def test_root_orchestrator_end_to_end(monkeypatch):
     """Evaluates ADK RootOrchestrator workflow and grounded dynamic LLM narrative synthesis."""
     class MockGenerateResponse:
-        text = "### Executive Summary for AAPL (Revenue)\nApple Inc. FY2023 10-K reported Total Net Sales of $383,285 million, down 2.8% due to macroeconomic headwinds in hardware sales."
+        def __init__(self, text):
+            self.text = text
 
     class MockModels:
         def generate_content(self, model, contents, **kwargs):
-            return MockGenerateResponse()
+            if "intent parser" in str(contents):
+                return MockGenerateResponse('{"query_type": "variance_analysis", "tickers": ["AAPL"], "requested_years": [2023, 2022], "metric_name": "Revenue"}')
+            return MockGenerateResponse("### Executive Summary for AAPL (Revenue)\nApple Inc. FY2023 10-K reported Total Net Sales of $383,285 million, down 2.8% due to macroeconomic headwinds in hardware sales.")
 
     class MockGenAIClient:
         models = MockModels()
@@ -204,11 +207,17 @@ def test_model_configuration_validation():
 def test_multiturn_conversational_context_retention():
     """Evaluates multi-turn context retention ensuring follow-up queries retain active ticker/metric from session history."""
     class MockGenerateResponse:
-        text = "Amazon.com, Inc. (AMZN) FY2024 Revenue reached $620,130 million."
+        def __init__(self, text):
+            self.text = text
 
     class MockModels:
         def generate_content(self, model, contents, **kwargs):
-            return MockGenerateResponse()
+            c_str = str(contents)
+            if "intent parser" in c_str:
+                if "what about 2024?" in c_str:
+                    return MockGenerateResponse('{"query_type": "financial_summary", "tickers": ["AMZN"], "requested_years": [2024], "metric_name": "Revenue"}')
+                return MockGenerateResponse('{"query_type": "financial_summary", "tickers": ["AMZN"], "requested_years": [2023, 2022], "metric_name": "Revenue"}')
+            return MockGenerateResponse("Amazon.com, Inc. (AMZN) FY2024 Revenue reached $620,130 million.")
 
     class MockGenAIClient:
         models = MockModels()
@@ -238,11 +247,14 @@ def test_multiturn_conversational_context_retention():
 def test_multiyear_range_query_expansion():
     """Evaluates multi-year range query parsing (e.g. 2022-2024) to ensure all intermediate years are retrieved."""
     class MockGenerateResponse:
-        text = "Amazon.com, Inc. (AMZN) financial metrics for 2022, 2023, and 2024."
+        def __init__(self, text):
+            self.text = text
 
     class MockModels:
         def generate_content(self, model, contents, **kwargs):
-            return MockGenerateResponse()
+            if "intent parser" in str(contents):
+                return MockGenerateResponse('{"query_type": "financial_summary", "tickers": ["AMZN"], "requested_years": [2022, 2023, 2024], "metric_name": "Revenue"}')
+            return MockGenerateResponse("Amazon.com, Inc. (AMZN) financial metrics for 2022, 2023, and 2024.")
 
     class MockGenAIClient:
         models = MockModels()

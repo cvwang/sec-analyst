@@ -284,11 +284,8 @@ class RootOrchestrator:
                         last_ticker = meta["ticker"]
             recent_turns_summary = "\n".join(turn_lines)
 
-        # 1. Attempt LLM Multi-Turn Intent Parsing with tool_model (Gemini 3.5 Flash)
-        if self.analyst_agent and self.analyst_agent.client:
-            try:
-                log_tool_execution("intent_classification_tool_model", "intent", {"model": self.tool_model, "prompt": prompt})
-                intent_prompt = f"""
+        log_tool_execution("intent_classification_tool_model", "intent", {"model": self.tool_model, "prompt": prompt})
+        intent_prompt = f"""
 You are an expert financial intent parser.
 Analyze the user's latest query in the context of recent conversation turns.
 
@@ -314,80 +311,23 @@ Return ONLY valid JSON matching this schema:
   "metric_name": "Revenue" | "Operating Income" | "Net Income"
 }}
 """
-                resp = self.analyst_agent.client.models.generate_content(
-                    model=self.tool_model,
-                    contents=intent_prompt,
-                )
-                cleaned_text = resp.text.strip().replace("```json", "").replace("```", "").strip()
-                parsed_json = json.loads(cleaned_text)
-                t_parsed = parsed_json.get("tickers") or ([parsed_json.get("primary_ticker")] if parsed_json.get("primary_ticker") else [last_ticker or "AAPL"])
-                t_clean = [t.upper() for t in t_parsed if t]
-                return {
-                    "query_type": parsed_json.get("query_type", "financial_summary"),
-                    "tickers": t_clean,
-                    "ticker": t_clean[0] if t_clean else "AAPL",
-                    "requested_years": [int(y) for y in parsed_json.get("requested_years", [])],
-                    "metric_name": parsed_json.get("metric_name", "Revenue"),
-                }
-            except Exception as err:
-                log_tool_execution("intent_classification_tool_model", "outcome", {"error": str(err)}, status="ERROR")
-
-        # 2. Fallback Heuristic Parsing
-        prompt_upper = prompt.upper()
-
-        ticker_map = {
-            "APPLE": "AAPL", "AAPL": "AAPL",
-            "MICROSOFT": "MSFT", "MSFT": "MSFT",
-            "NVIDIA": "NVDA", "NVDA": "NVDA",
-            "GOOGLE": "GOOGL", "ALPHABET": "GOOGL", "GOOGL": "GOOGL",
-            "AMAZON": "AMZN", "AMZN": "AMZN",
-            "TESLA": "TSLA", "TSLA": "TSLA",
-            "META": "META", "FACEBOOK": "META",
-            "AMD": "AMD", "JPMORGAN": "JPM", "JPM": "JPM",
-            "WALMART": "WMT", "WMT": "WMT"
-        }
-
-        found_tickers = []
-        for word, symbol in ticker_map.items():
-            if word in prompt_upper and symbol not in found_tickers:
-                found_tickers.append(symbol)
-
-        tickers_list = found_tickers if found_tickers else [last_ticker or "AAPL"]
-
-        # Metric parsing
-        metric_name = "Revenue"
-        if "OPERATING INCOME" in prompt_upper or "OPERATING MARGIN" in prompt_upper or "OPERATING PROFIT" in prompt_upper:
-            metric_name = "Operating Income"
-        elif "NET INCOME" in prompt_upper or "NET PROFIT" in prompt_upper or "EARNINGS" in prompt_upper:
-            metric_name = "Net Income"
-
-        # Years parsing
-        years_found = sorted([int(y) for y in re.findall(r'\b(202[0-9])\b', prompt_upper)])
-        requested_years = []
-        if len(years_found) >= 2:
-            min_y, max_y = years_found[0], years_found[-1]
-            requested_years = list(range(min_y, max_y + 1))
-        elif len(years_found) == 1:
-            requested_years = [years_found[0]]
-        else:
-            requested_years = [2023, 2022]
-
-        # Context-aware query type
-        if "RISK" in prompt_upper or "THEMATIC" in prompt_upper or "AI" in prompt_upper or last_query_type == "thematic_tracking":
-            query_type = "thematic_tracking"
-        elif len(tickers_list) > 1 or "COMPARE" in prompt_upper or ("VS" in prompt_upper and len(tickers_list) > 1):
-            query_type = "peer_comparison"
-        elif "VARIANCE" in prompt_upper or "GROWTH" in prompt_upper or "CHANGE" in prompt_upper or "INCREASE" in prompt_upper or "DECREASE" in prompt_upper:
-            query_type = "variance_analysis"
-        else:
-            query_type = "financial_summary"
-
+        resp = self.analyst_agent.client.models.generate_content(
+            model=self.tool_model,
+            contents=intent_prompt,
+        )
+        cleaned_text = resp.text.strip().replace("```json", "").replace("```", "").strip()
+        json_match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
+        if json_match:
+            cleaned_text = json_match.group(0)
+        parsed_json = json.loads(cleaned_text)
+        t_parsed = parsed_json.get("tickers") or ([parsed_json.get("primary_ticker")] if parsed_json.get("primary_ticker") else [last_ticker or "AAPL"])
+        t_clean = [t.upper() for t in t_parsed if t]
         return {
-            "query_type": query_type,
-            "tickers": tickers_list,
-            "ticker": tickers_list[0],
-            "requested_years": requested_years,
-            "metric_name": metric_name,
+            "query_type": parsed_json.get("query_type", "financial_summary"),
+            "tickers": t_clean,
+            "ticker": t_clean[0] if t_clean else "AAPL",
+            "requested_years": [int(y) for y in parsed_json.get("requested_years", [])],
+            "metric_name": parsed_json.get("metric_name", "Revenue"),
         }
 
     @trace_span("RootOrchestrator.dispatch")
