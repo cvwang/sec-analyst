@@ -118,21 +118,23 @@ class FinancialAnalystAgent:
     ) -> Dict[str, Any]:
         """Synthesizes grounded financial narrative using Vertex AI Gemini model from RAG context."""
         meta = metadata or {}
-        tickers = tickers or meta.get("tickers") or ([hybrid_rag_result.primary_metrics[0].ticker] if hybrid_rag_result.primary_metrics else ["AAPL"])
-        ticker = tickers[0]
-        m_name = metric_name or meta.get("metric_name") or "Revenue"
-        q_type = query_type or hybrid_rag_result.query_type or meta.get("query_type") or "financial_summary"
+        tickers = tickers or meta.get("tickers") or ([hybrid_rag_result.primary_metrics[0].ticker] if (hybrid_rag_result and hybrid_rag_result.primary_metrics) else [])
+        if not tickers:
+            raise ValueError("No ticker symbols available for financial analysis.")
+        primary_ticker = tickers[0]
+        metric_name = metric_name or meta.get("metric_name") or ""
+        query_type = query_type or (hybrid_rag_result.query_type if hybrid_rag_result else "") or meta.get("query_type") or ""
 
         # 1. Compute variance result if structured metrics exist
         calc_res = None
         calc_block = ""
         if len(hybrid_rag_result.primary_metrics) >= 2:
             p_metrics = sorted(hybrid_rag_result.primary_metrics, key=lambda x: x.fiscal_year, reverse=True)
-            curr_val = getattr(p_metrics[0], m_name.lower().replace(" ", "_"), 0.0)
-            prior_val = getattr(p_metrics[1], m_name.lower().replace(" ", "_"), 0.0)
+            curr_val = getattr(p_metrics[0], metric_name.lower().replace(" ", "_"), 0.0)
+            prior_val = getattr(p_metrics[1], metric_name.lower().replace(" ", "_"), 0.0)
             calc_req = VarianceRequest(
-                ticker=ticker,
-                metric_name=m_name,
+                ticker=primary_ticker,
+                metric_name=metric_name,
                 current_period_value=curr_val,
                 prior_period_value=prior_val,
             )
@@ -142,8 +144,8 @@ class FinancialAnalystAgent:
                 pct_str = f"{calc_res.percentage_change:.2f}%" if calc_res.percentage_change is not None else "N/A"
                 calc_block = f"""
 DETERMINISTIC CALCULATION TOOL OUTPUT (`calculate_financial_variance`):
-- Ticker: {ticker}
-- Metric: {m_name}
+- Ticker: {primary_ticker}
+- Metric: {metric_name}
 - FY{p_metrics[1].fiscal_year} Value: ${calc_res.prior_period_value:,.1f}M USD
 - FY{p_metrics[0].fiscal_year} Value: ${calc_res.current_period_value:,.1f}M USD
 - Absolute Variance: {abs_str}
@@ -153,7 +155,7 @@ DETERMINISTIC CALCULATION TOOL OUTPUT (`calculate_financial_variance`):
 
         # 2. Synthesize Narrative with Vertex AI Gemini
         history_context = f"\nCOMPACTED HISTORY CONTEXT:\n{context_summary}\n" if context_summary else ""
-        user_q_str = f"USER PROMPT: {user_prompt}" if user_prompt else f"USER REQUEST: Analyze financial filing data for {ticker}."
+        user_q_str = f"USER PROMPT: {user_prompt}" if user_prompt else f"USER REQUEST: Analyze financial filing data for {primary_ticker}."
 
         prompt = f"""
 {SYSTEM_CONSTITUTION}
@@ -172,67 +174,59 @@ Directly answer the user prompt above using the grounded context and tool output
         narrative = ""
         model_used = "deterministic-fallback"
 
-        if self.client:
-            models_to_try = [self.model_name, settings.tool_model]
-            datastore_path = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore"
+        datastore_path = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore"
+        log_tool_execution("vertex_ai_generate_content", "intent", {"model": self.model_name, "tickers": tickers, "datastore": datastore_path})
 
-            for model_id in models_to_try:
-                try:
-                    log_tool_execution("vertex_ai_generate_content", "intent", {"model": model_id, "ticker": ticker, "datastore": datastore_path})
-                    
-                    search_tool = types.Tool(
-                        retrieval=types.Retrieval(
-                            vertex_ai_search=types.VertexAISearch(datastore=datastore_path)
-                        )
-                    )
-                    tools = [
-                        calculate_financial_variance_tool,
-                        query_bigquery_financial_metrics_tool,
-                        search_sec_filing_chunks_tool,
-                        search_tool,
-                    ]
-                    config = types.GenerateContentConfig(tools=tools)
+        search_tool = types.Tool(
+            retrieval=types.Retrieval(
+                vertex_ai_search=types.VertexAISearch(datastore=datastore_path)
+            )
+        )
+        tools = [
+            calculate_financial_variance_tool,
+            query_bigquery_financial_metrics_tool,
+            search_sec_filing_chunks_tool,
+            search_tool,
+        ]
+        config = types.GenerateContentConfig(tools=tools)
 
-                    response = self.client.models.generate_content(
-                        model=model_id,
-                        contents=prompt,
-                        config=config,
-                    )
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+            config=config,
+        )
 
-                    # Intercept and execute Gemini Native Function Calls
-                    if getattr(response, "function_calls", None):
-                        for call in response.function_calls:
-                            tool_name = call.name
-                            tool_args = dict(call.args) if call.args else {}
-                            log_tool_execution("gemini_native_function_call", "intent", {"tool": tool_name, "args": tool_args})
-                            if tool_name == "calculate_financial_variance_tool":
-                                tool_res = calculate_financial_variance_tool(**tool_args)
-                                log_tool_execution("gemini_native_function_call", "outcome", tool_res)
-                            elif tool_name == "query_bigquery_financial_metrics_tool":
-                                tool_res = query_bigquery_financial_metrics_tool(**tool_args)
-                                log_tool_execution("gemini_native_function_call", "outcome", tool_res)
-                            elif tool_name == "search_sec_filing_chunks_tool":
-                                tool_res = search_sec_filing_chunks_tool(**tool_args)
-                                log_tool_execution("gemini_native_function_call", "outcome", {"count": len(tool_res)})
+        # Intercept and execute Gemini Native Function Calls
+        if getattr(response, "function_calls", None):
+            for call in response.function_calls:
+                tool_name = call.name
+                tool_args = dict(call.args) if call.args else {}
+                log_tool_execution("gemini_native_function_call", "intent", {"tool": tool_name, "args": tool_args})
+                if tool_name == "calculate_financial_variance_tool":
+                    tool_res = calculate_financial_variance_tool(**tool_args)
+                    log_tool_execution("gemini_native_function_call", "outcome", tool_res)
+                elif tool_name == "query_bigquery_financial_metrics_tool":
+                    tool_res = query_bigquery_financial_metrics_tool(**tool_args)
+                    log_tool_execution("gemini_native_function_call", "outcome", tool_res)
+                elif tool_name == "search_sec_filing_chunks_tool":
+                    tool_res = search_sec_filing_chunks_tool(**tool_args)
+                    log_tool_execution("gemini_native_function_call", "outcome", {"count": len(tool_res)})
 
-                    narrative = response.text.strip() if response.text else ""
-                    if not narrative and getattr(response, "function_calls", None):
-                        narrative = f"Executed native tool calls: {[c.name for c in response.function_calls]} successfully."
+        narrative = response.text.strip() if response.text else ""
+        if not narrative and getattr(response, "function_calls", None):
+            narrative = f"Executed native tool calls: {[c.name for c in response.function_calls]} successfully."
 
-                    model_used = f"Vertex AI ({model_id} + Native ADK Search & Tools)"
-                    log_tool_execution("vertex_ai_generate_content", "outcome", {"model": model_id, "status": "SUCCESS"})
-                    break
-                except Exception as err:
-                    log_tool_execution("vertex_ai_generate_content", "outcome", {"model": model_id, "error": str(err)}, status="ERROR")
+        model_used = f"Vertex AI ({self.model_name} + Native ADK Search & Tools)"
+        log_tool_execution("vertex_ai_generate_content", "outcome", {"model": self.model_name, "status": "SUCCESS"})
 
         if not narrative:
             return {
                 "is_success": False,
                 "error": "Vertex AI Gemini model execution failed. Please verify GCP ADC authentication (`gcloud auth application-default login`).",
                 "narrative": "⚠️ Unable to generate dynamic LLM response. Please run `gcloud auth application-default login` to re-authenticate with Google Cloud.",
-                "ticker": ticker,
-                "query_type": q_type,
-                "metric_name": m_name,
+                "tickers": tickers,
+                "query_type": query_type,
+                "metric_name": metric_name,
                 "variance_result": calc_res,
                 "hybrid_search_result": hybrid_rag_result,
                 "citations": hybrid_rag_result.grounded_citations if hybrid_rag_result else [],
@@ -241,9 +235,9 @@ Directly answer the user prompt above using the grounded context and tool output
 
         return {
             "is_success": True,
-            "ticker": ticker,
-            "query_type": q_type,
-            "metric_name": m_name,
+            "tickers": tickers,
+            "query_type": query_type,
+            "metric_name": metric_name,
             "variance_result": calc_res,
             "hybrid_search_result": hybrid_rag_result,
             "citations": hybrid_rag_result.grounded_citations,
@@ -270,18 +264,12 @@ class RootOrchestrator:
         # Retrieve recent session history for context-aware multi-turn intent retention
         history = self.session_store.get_session_history(session_id)
         recent_turns_summary = ""
-        last_query_type = None
-        last_ticker = None
         if history:
-            turn_lines = []
-            for t in history[-3:]:
-                if isinstance(t, dict):
-                    turn_lines.append(f"User: {t.get('user_query')}\nAgent: {t.get('agent_response', '')[:200]}")
-                    meta = t.get("metadata", {})
-                    if meta.get("query_type"):
-                        last_query_type = meta["query_type"]
-                    if meta.get("ticker"):
-                        last_ticker = meta["ticker"]
+            turn_lines = [
+                f"User: {t.get('user_query')}\nAgent: {t.get('agent_response', '')[:200]}"
+                for t in history[-3:]
+                if isinstance(t, dict)
+            ]
             recent_turns_summary = "\n".join(turn_lines)
 
         log_tool_execution("intent_classification_tool_model", "intent", {"model": self.tool_model, "prompt": prompt})
@@ -301,14 +289,15 @@ INSTRUCTIONS:
    - "peer_comparison": comparing multiple companies.
    - "variance_analysis": explicit calculations of growth, variance, or period-over-period percentage changes.
    - "financial_summary": general financial metrics lookup.
-3. Identify requested_years and metric_name.
+3. Identify requested_years, metric_name, and thematic_keyword (e.g., 'AI', 'supply chain', 'R&D', 'risk').
 
 Return ONLY valid JSON matching this schema:
 {{
   "query_type": "thematic_tracking" | "peer_comparison" | "variance_analysis" | "financial_summary",
   "tickers": ["TICKER1", "TICKER2"],
   "requested_years": [2023],
-  "metric_name": "Revenue" | "Operating Income" | "Net Income"
+  "metric_name": "Revenue" | "Operating Income" | "Net Income",
+  "thematic_keyword": "AI" | "supply chain" | "R&D" | "cybersecurity" | ""
 }}
 """
         resp = self.analyst_agent.client.models.generate_content(
@@ -319,15 +308,19 @@ Return ONLY valid JSON matching this schema:
         json_match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
         if json_match:
             cleaned_text = json_match.group(0)
-        parsed_json = json.loads(cleaned_text)
-        t_parsed = parsed_json.get("tickers") or ([parsed_json.get("primary_ticker")] if parsed_json.get("primary_ticker") else [last_ticker or "AAPL"])
-        t_clean = [t.upper() for t in t_parsed if t]
+        parsed = json.loads(cleaned_text)
+        raw_tickers = parsed["tickers"] if "tickers" in parsed else []
+        tickers = [t.upper() for t in raw_tickers if t]
+        if not tickers:
+            raise ValueError(f"Unable to identify target ticker symbol for prompt: '{prompt}'")
+        requested_years = parsed["requested_years"] if "requested_years" in parsed else []
+
         return {
-            "query_type": parsed_json.get("query_type", "financial_summary"),
-            "tickers": t_clean,
-            "ticker": t_clean[0] if t_clean else "AAPL",
-            "requested_years": [int(y) for y in parsed_json.get("requested_years", [])],
-            "metric_name": parsed_json.get("metric_name", "Revenue"),
+            "query_type": parsed["query_type"],
+            "tickers": tickers,
+            "requested_years": requested_years,
+            "metric_name": parsed["metric_name"],
+            "thematic_keyword": parsed["thematic_keyword"] if "thematic_keyword" in parsed else "",
         }
 
     @trace_span("RootOrchestrator.dispatch")
@@ -346,14 +339,19 @@ Return ONLY valid JSON matching this schema:
         """Routes user queries to sub-agents, manages persistent session memory, and applies history compaction."""
         if prompt:
             parsed = self.parse_natural_language_intent(prompt, session_id=session_id)
-            query_type = query_type or parsed.get("query_type", "financial_summary")
-            tickers = tickers or parsed.get("tickers", [])
-            metric_name = metric_name or parsed.get("metric_name", "Revenue")
-            thematic_keyword = thematic_keyword or parsed.get("thematic_keyword", "")
-            requested_years = requested_years or parsed.get("requested_years", [])
+            query_type = query_type or parsed["query_type"]
+            tickers = tickers or parsed["tickers"]
+            metric_name = metric_name or parsed["metric_name"]
+            thematic_keyword = thematic_keyword or parsed["thematic_keyword"]
+            requested_years = requested_years or parsed["requested_years"]
 
         query_type = query_type or "financial_summary"
-        tickers = [t.upper() for t in tickers] if tickers else ["AAPL"]
+        metric_name = metric_name or "Revenue"
+        thematic_keyword = thematic_keyword or ""
+        requested_years = requested_years or []
+        tickers = [t.upper() for t in tickers if t] if tickers else []
+        if not tickers:
+            raise ValueError("No target ticker symbol provided for analysis.")
         primary_ticker = tickers[0]
 
         # 1. Retrieve persistent session history and apply compaction
@@ -384,7 +382,7 @@ Return ONLY valid JSON matching this schema:
             requested_years=requested_years,
             metric_name=metric_name,
             query_type=query_type,
-            metadata={"ticker": primary_ticker, "tickers": tickers, "metric_name": metric_name, "query_type": query_type},
+            metadata={"tickers": tickers, "metric_name": metric_name, "query_type": query_type},
         )
 
         if not analysis_res.get("is_success"):
@@ -396,7 +394,7 @@ Return ONLY valid JSON matching this schema:
             session_id=session_id,
             user_query=user_q,
             agent_response=analysis_res["narrative"],
-            metadata={"ticker": primary_ticker, "tickers": tickers, "metric": metric_name, "query_type": query_type},
+            metadata={"tickers": tickers, "metric_name": metric_name, "query_type": query_type},
         )
 
         if export_gcs_uri:
@@ -439,6 +437,6 @@ Return ONLY valid JSON matching this schema:
                 session_id=session_id,
                 user_query=prompt or "Financial analysis",
                 agent_response=res["narrative"],
-                metadata={"ticker": res.get("ticker")},
+                metadata={"tickers": res.get("tickers")},
             )
         return res

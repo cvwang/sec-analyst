@@ -104,7 +104,8 @@ def run_cli_session():
 
             # Check for GCS export request in prompt
             if "export" in user_input.lower() or "save" in user_input.lower():
-                gcs_uri = f"gs://{settings.gcp_project_id}-sec-reports/{res.get('ticker', 'report').lower()}_report.md"
+                primary = res.get('tickers')[0] if res.get('tickers') else 'report'
+                gcs_uri = f"gs://{settings.gcp_project_id}-sec-reports/{primary.lower()}_report.md"
                 print(f"\n🔒 Requesting GCS export: {gcs_uri}")
 
                 unapproved = orchestrator.dispatch_query(

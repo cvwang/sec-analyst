@@ -183,7 +183,7 @@ def test_root_orchestrator_end_to_end(monkeypatch):
     )
 
     assert response["is_success"] is True
-    assert response["ticker"] == "AAPL"
+    assert response["tickers"] == ["AAPL"]
     assert response["variance_result"].absolute_change == -11043.0
     assert response["variance_result"].percentage_change == -2.8
     assert "AAPL" in response["narrative"]
@@ -233,7 +233,7 @@ def test_multiturn_conversational_context_retention():
         session_id=session_id,
     )
     assert turn1_res["is_success"] is True
-    assert turn1_res["ticker"] == "AMZN"
+    assert turn1_res["tickers"] == ["AMZN"]
 
     # Turn 2: Follow-up request omitting ticker ("what about 2024?")
     turn2_res = orchestrator.dispatch_query(
@@ -241,7 +241,7 @@ def test_multiturn_conversational_context_retention():
         session_id=session_id,
     )
     assert turn2_res["is_success"] is True
-    assert turn2_res["ticker"] == "AMZN"  # Retained AMZN from Turn 1 history instead of defaulting to AAPL
+    assert turn2_res["tickers"] == ["AMZN"]  # Retained AMZN from Turn 1 history instead of defaulting to AAPL
 
 
 def test_multiyear_range_query_expansion():
@@ -263,7 +263,7 @@ def test_multiyear_range_query_expansion():
     orchestrator.analyst_agent.client = MockGenAIClient()
 
     parsed = orchestrator.parse_natural_language_intent("show me amzn financial data from 2022-2024")
-    assert parsed["ticker"] == "AMZN"
+    assert parsed["tickers"] == ["AMZN"]
     assert parsed["requested_years"] == [2022, 2023, 2024]
 
     res = orchestrator.dispatch_query(prompt="show me amzn financial data from 2022-2024")
@@ -319,6 +319,7 @@ def test_native_function_calling_dispatch():
     analysis_res = agent.run_analysis(
         user_prompt="calculate variance for AAPL revenue",
         hybrid_rag_result=fake_rag,
+        tickers=["AAPL"],
     )
 
     assert analysis_res["is_success"] is True
