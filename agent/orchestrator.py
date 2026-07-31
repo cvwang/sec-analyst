@@ -377,30 +377,22 @@ Return ONLY valid JSON matching this schema:
     @trace_span("RootOrchestrator.dispatch")
     def dispatch_query(
         self,
-        prompt: str = "",
+        prompt: str,
         session_id: str = "default_session",
-        tickers: List[str] = [],
-        requested_years: List[int] = [],
-        query_type: str = "",
-        metric_name: str = "",
-        thematic_keyword: str = "",
         export_gcs_uri: str = "",
         human_approved_export: bool = False,
     ) -> Dict[str, Any]:
         """Routes user queries to sub-agents, manages persistent session memory, and applies history compaction."""
-        if prompt:
-            parsed = self.parse_natural_language_intent(prompt, session_id=session_id)
-            query_type = query_type or parsed["query_type"]
-            tickers = tickers or parsed["tickers"]
-            metric_name = metric_name or parsed["metric_name"]
-            thematic_keyword = thematic_keyword or parsed["thematic_keyword"]
-            requested_years = requested_years or parsed["requested_years"]
+        if not prompt:
+            raise ValueError("No query prompt provided.")
 
-        query_type = query_type or "financial_summary"
-        metric_name = metric_name or "Revenue"
-        thematic_keyword = thematic_keyword or ""
-        requested_years = requested_years or []
-        tickers = [t.upper() for t in tickers if t] if tickers else []
+        parsed = self.parse_natural_language_intent(prompt, session_id=session_id)
+        query_type = parsed["query_type"]
+        tickers = [t.upper() for t in parsed["tickers"] if t]
+        metric_name = parsed["metric_name"]
+        thematic_keyword = parsed["thematic_keyword"]
+        requested_years = parsed["requested_years"]
+
         if not tickers:
             raise ValueError("No target ticker symbol provided for analysis.")
         primary_ticker = tickers[0]
@@ -426,7 +418,7 @@ Return ONLY valid JSON matching this schema:
 
         # 4. Run analysis with compacted context summary and RAG grounding
         analysis_res = self.analyst_agent.run_analysis(
-            user_prompt=prompt or f"Analyze financial disclosures for {primary_ticker}.",
+            user_prompt=prompt,
             hybrid_rag_result=rag_res,
             context_summary=compacted.summary_of_older_turns,
             tickers=tickers,
@@ -440,10 +432,9 @@ Return ONLY valid JSON matching this schema:
             return analysis_res
 
         # 5. Save turn to persistent session store with query_type metadata
-        user_q = prompt or f"Analyze financial disclosures for {primary_ticker}."
         self.session_store.save_session_turn(
             session_id=session_id,
-            user_query=user_q,
+            user_query=prompt,
             agent_response=analysis_res["narrative"],
             metadata={"tickers": tickers, "metric_name": metric_name, "query_type": query_type},
         )
@@ -458,36 +449,3 @@ Return ONLY valid JSON matching this schema:
             analysis_res["export_status"] = export_res.model_dump()
 
         return analysis_res
-
-    async def dispatch_query_async(
-        self,
-        prompt: str = "",
-        session_id: str = "default_session",
-        tickers: List[str] = [],
-        requested_years: List[int] = [],
-        query_type: str = "",
-        metric_name: str = "",
-        thematic_keyword: str = "",
-        export_gcs_uri: str = "",
-        human_approved_export: bool = False,
-    ) -> Dict[str, Any]:
-        """Asynchronous query dispatch with background memory consolidation."""
-        res = self.dispatch_query(
-            prompt=prompt,
-            session_id=session_id,
-            tickers=tickers,
-            requested_years=requested_years,
-            query_type=query_type,
-            metric_name=metric_name,
-            thematic_keyword=thematic_keyword,
-            export_gcs_uri=export_gcs_uri,
-            human_approved_export=human_approved_export,
-        )
-        if res.get("is_success"):
-            await self.async_memory.consolidate_session_memory_async(
-                session_id=session_id,
-                user_query=prompt or "Financial analysis",
-                agent_response=res["narrative"],
-                metadata={"tickers": res.get("tickers")},
-            )
-        return res
