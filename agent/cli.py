@@ -1,64 +1,26 @@
-"""Interactive Command Line Interface (CLI) supporting structured queries and natural language multi-turn chat."""
+"""Interactive Command Line Interface (CLI) supporting natural language financial queries and multi-turn chat."""
 
-import re
+import os
 from typing import Dict, Any
 from agent.config import settings
 from agent.orchestrator import RootOrchestrator
+from agent.guardrails.pii_scrubber import PIIScrubber
 
 
 def print_banner():
     print("\n" + "=" * 70)
-    print("      📊 SEC EDGAR NATURAL LANGUAGE ANALYST AGENT (Phase 1) 📊")
+    print("      📊 SEC EDGAR NATURAL LANGUAGE ANALYST AGENT 📊")
     print("=" * 70)
-    print("Supports both Natural Language Prompts and Structured Inputs!")
-    print("Example Prompts: 'Analyze Apple revenue 2023 vs 2022' or 'Check NVDA 2024'")
+    print("Dynamic LLM-Powered Agent for Financial Variance, Peer Comparison, & MD&A/Risk RAG!")
+    print("Example Prompts:")
+    print("  • 'Analyze Apple revenue 2023 vs 2022'")
+    print("  • 'Compare Microsoft and Nvidia operating income for 2023'")
+    print("  • 'What are the main AI risk disclosures for Meta in 2023?'")
     print("-" * 70 + "\n")
 
 
-def parse_natural_prompt(prompt: str) -> Dict[str, Any]:
-    """Parses natural language prompt strings into structured query parameters."""
-    text_lower = prompt.lower()
-
-    # Determine Ticker
-    ticker = "AAPL"
-    if "msft" in text_lower or "microsoft" in text_lower:
-        ticker = "MSFT"
-    elif "nvda" in text_lower or "nvidia" in text_lower:
-        ticker = "NVDA"
-    elif "aapl" in text_lower or "apple" in text_lower:
-        ticker = "AAPL"
-
-    # Determine Financial Metric
-    metric_name = "Revenue"
-    if "operating" in text_lower or "operating income" in text_lower:
-        metric_name = "Operating Income"
-    elif "net income" in text_lower or "profit" in text_lower:
-        metric_name = "Net Income"
-    elif "revenue" in text_lower or "sales" in text_lower:
-        metric_name = "Revenue"
-
-    # Determine Fiscal Years
-    current_year = 2023
-    prior_year = 2022
-
-    years = [int(y) for y in re.findall(r"\b(202[0-9])\b", prompt)]
-    if len(years) >= 2:
-        years.sort(reverse=True)
-        current_year, prior_year = years[0], years[1]
-    elif len(years) == 1:
-        if years[0] == 2024:
-            current_year, prior_year = 2024, 2023
-
-    return {
-        "ticker": ticker,
-        "current_year": current_year,
-        "prior_year": prior_year,
-        "metric_name": metric_name,
-    }
-
-
 def run_cli_session():
-    """Runs multi-turn chat session with persistent state and natural language parsing."""
+    """Runs multi-turn chat session with persistent state and LLM intent parsing."""
     print_banner()
 
     orchestrator = RootOrchestrator()
@@ -66,7 +28,7 @@ def run_cli_session():
 
     while True:
         try:
-            user_input = input("\n💬 User Query (e.g., 'Analyze Apple revenue 2023 vs 2022' or 'exit'): ").strip()
+            user_input = input("\n💬 User Query (or 'exit' to quit): ").strip()
             if not user_input:
                 continue
 
@@ -74,12 +36,9 @@ def run_cli_session():
                 print("\nExiting agent session. Goodbye!")
                 break
 
-            # Parse natural prompt or structured parameters
-            params = parse_natural_prompt(user_input)
-
             print(f"\n🚀 Running Agent for session '{session_id}'...\n")
 
-            # Dispatch Query with persistent session ID
+            # Dispatch Query directly to RootOrchestrator (LLM intent parsing)
             res = orchestrator.dispatch_query(
                 prompt=user_input,
                 session_id=session_id,
@@ -89,6 +48,11 @@ def run_cli_session():
                 print(f"❌ Analysis Error: {res.get('error')}")
                 continue
 
+            # Apply PII scrubbing guardrail to narrative output
+            narrative = res.get("narrative", "")
+            if narrative:
+                narrative = PIIScrubber.scrub_text(narrative)
+
             stored_history = orchestrator.session_store.get_session_history(session_id)
 
             # Output Report & Memory Info
@@ -96,15 +60,12 @@ def run_cli_session():
             print(f"  AGENT ANALYSIS REPORT (Engine: {res.get('model_used', 'Unknown')})")
             print(f"  🧠 Memory State: Session '{session_id}' | Turns Stored: {len(stored_history)}")
             print("=" * 70)
-            if res.get("model_used") == "deterministic-fallback":
-                print("⚠️  Notice: Falling back to deterministic output because GCP OAuth token requires re-authentication.")
-                print("   To enable live Vertex AI responses, run: gcloud auth application-default login\n")
-            print(res["narrative"])
+            print(narrative)
             print("=" * 70)
 
             # Check for GCS export request in prompt
             if "export" in user_input.lower() or "save" in user_input.lower():
-                primary = res.get('tickers')[0] if res.get('tickers') else 'report'
+                primary = res.get("tickers")[0] if res.get("tickers") else "report"
                 gcs_uri = f"gs://{settings.gcp_project_id}-sec-reports/{primary.lower()}_report.md"
                 print(f"\n🔒 Requesting GCS export: {gcs_uri}")
 
