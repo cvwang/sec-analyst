@@ -90,16 +90,19 @@ class VertexAISearchClient:
                 # Extract grounded chunks if available
                 if grounding_meta and hasattr(grounding_meta, "grounding_chunks") and grounding_meta.grounding_chunks:
                     for idx, chunk in enumerate(grounding_meta.grounding_chunks[:page_size]):
+                        rc = getattr(chunk, "retrieved_context", None)
                         web_info = getattr(chunk, "web", None)
-                        uri = getattr(web_info, "uri", "") if web_info else f"gs://sec-analyst-sec-reports/filings/{query.replace(' ', '_')}_{idx}.md"
-                        title = getattr(web_info, "title", f"SEC Filing {idx + 1}") if web_info else f"SEC 10-K Chunk {idx + 1}"
+
+                        uri = (getattr(rc, "uri", "") if rc else "") or (getattr(web_info, "uri", "") if web_info else "") or f"gs://sec-analyst-sec-reports/filings/{query.replace(' ', '_')}_{idx}.md"
+                        title = (getattr(rc, "title", "") if rc else "") or (getattr(web_info, "title", "") if web_info else "") or f"SEC 10-K Chunk {idx + 1}"
+                        snippet = (getattr(rc, "text", "") if rc else "") or (response.text if (response and hasattr(response, "text")) else "")
 
                         results.append(
                             VertexSearchResult(
                                 id=f"chunk_{idx + 1}",
                                 gcs_uri=uri,
                                 title=title,
-                                snippet=response.text[:600] if idx == 0 else f"Grounded passage {idx + 1} for {query}",
+                                snippet=snippet,
                             )
                         )
 

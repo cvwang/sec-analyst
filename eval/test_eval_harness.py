@@ -422,3 +422,54 @@ def test_multiturn_qualitative_risk_followup(monkeypatch):
     assert len(captured_queries) > 0
     assert any("risk" in q.lower() for q in captured_queries)
 
+
+def test_vertex_search_grounding_chunks_snippet_extraction():
+    """Verifies that VertexAISearchClient extracts genuine text snippets from retrieved_context rather than placeholder strings."""
+    from agent.rag.vertex_search import VertexAISearchClient
+
+    class MockRetrievedContext:
+        def __init__(self, uri, title, text):
+            self.uri = uri
+            self.title = title
+            self.text = text
+
+    class MockChunk:
+        def __init__(self, uri, title, text):
+            self.retrieved_context = MockRetrievedContext(uri, title, text)
+
+    class MockGroundingMetadata:
+        def __init__(self, chunks):
+            self.grounding_chunks = chunks
+
+    class MockCandidate:
+        def __init__(self, chunks):
+            self.grounding_metadata = MockGroundingMetadata(chunks)
+
+    class MockResponse:
+        def __init__(self, chunks, text=""):
+            self.candidates = [MockCandidate(chunks)]
+            self.text = text
+
+    client = VertexAISearchClient()
+    mock_chunks = [
+        MockChunk("gs://bucket/doc1.md", "Doc 1", "Real unabridged SEC filing text for passage 1"),
+        MockChunk("gs://bucket/doc2.md", "Doc 2", "Real unabridged SEC filing text for passage 2"),
+        MockChunk("gs://bucket/doc3.md", "Doc 3", "Real unabridged SEC filing text for passage 3"),
+    ]
+    mock_response = MockResponse(mock_chunks, text="Overall summary text")
+
+    class MockModels:
+        def generate_content(self, model, contents, config=None):
+            return mock_response
+
+    client.client = type("MockClient", (), {"models": MockModels()})()
+
+    results = client.search_filings("TSLA risk", page_size=5)
+
+    assert len(results) == 3
+    assert results[0].snippet == "Real unabridged SEC filing text for passage 1"
+    assert results[1].snippet == "Real unabridged SEC filing text for passage 2"
+    assert results[2].snippet == "Real unabridged SEC filing text for passage 3"
+    for res in results:
+        assert "Grounded passage" not in res.snippet
+
