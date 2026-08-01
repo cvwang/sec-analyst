@@ -23,6 +23,18 @@ from agent.observability.logging_config import log_tool_execution
 from agent.observability.tracer import trace_span
 
 
+def safe_generate_content(client, model, contents, config=None, retries=3, delay=2):
+    """Executes model.generate_content with exponential backoff retry for 429 rate limit quota spikes."""
+    for attempt in range(retries):
+        try:
+            return client.models.generate_content(model=model, contents=contents, config=config)
+        except Exception as e:
+            if ("429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)) and attempt < retries - 1:
+                time.sleep(delay * (attempt + 1))
+                continue
+            raise e
+
+
 class ExportReportRequest(BaseModel):
     """Input request for exporting analyzed financial variance reports."""
 
@@ -151,57 +163,15 @@ class FinancialAnalystAgent:
         user_prompt: str,
         hybrid_rag_result: HybridSearchResult,
         context_summary: str = "",
-        tickers: List[str] = [],
-        requested_years: List[int] = [],
-        metric_name: str = "",
-        thematic_keyword: str = "",
-        query_type: str = "financial_summary",
     ) -> Dict[str, Any]:
         """Synthesizes grounded financial narrative using Vertex AI Gemini model from RAG context."""
-        tickers = tickers or ([hybrid_rag_result.primary_metrics[0].ticker] if (hybrid_rag_result and hybrid_rag_result.primary_metrics) else [])
-        if not tickers:
-            raise ValueError("No ticker symbols available for financial analysis.")
-        primary_ticker = tickers[0]
-        metric_name = metric_name or ""
-        query_type = query_type or (hybrid_rag_result.query_type if hybrid_rag_result else "") or ""
-
-        # 1. Compute variance result if structured metrics exist
-        calc_res = None
-        calc_block = ""
-        if len(hybrid_rag_result.primary_metrics) >= 2:
-            p_metrics = sorted(hybrid_rag_result.primary_metrics, key=lambda x: x.fiscal_year, reverse=True)
-            curr_val = getattr(p_metrics[0], metric_name.lower().replace(" ", "_"), 0.0)
-            prior_val = getattr(p_metrics[1], metric_name.lower().replace(" ", "_"), 0.0)
-            calc_req = VarianceRequest(
-                ticker=primary_ticker,
-                metric_name=metric_name,
-                current_period_value=curr_val,
-                prior_period_value=prior_val,
-            )
-            calc_res = calculate_financial_variance(calc_req)
-            if calc_res and calc_res.is_success:
-                abs_str = f"${calc_res.absolute_change:,.1f}M USD" if calc_res.absolute_change is not None else "N/A"
-                pct_str = f"{calc_res.percentage_change:.2f}%" if calc_res.percentage_change is not None else "N/A"
-                calc_block = f"""
-DETERMINISTIC CALCULATION TOOL OUTPUT (`calculate_financial_variance`):
-- Ticker: {primary_ticker}
-- Metric: {metric_name}
-- FY{p_metrics[1].fiscal_year} Value: ${calc_res.prior_period_value:,.1f}M USD
-- FY{p_metrics[0].fiscal_year} Value: ${calc_res.current_period_value:,.1f}M USD
-- Absolute Variance: {abs_str}
-- Percentage Variance: {pct_str}
-- Direction: {calc_res.direction}
-"""
-
-        # 2. Synthesize Narrative with Vertex AI Gemini
         history_context = f"\nCOMPACTED HISTORY CONTEXT:\n{context_summary}\n" if context_summary else ""
-        user_q_str = f"USER PROMPT: {user_prompt}" if user_prompt else f"USER REQUEST: Analyze financial filing data for {primary_ticker}."
+        user_q_str = f"USER PROMPT: {user_prompt}" if user_prompt else "USER REQUEST: Analyze financial filing data."
 
         prompt = f"""
 {SYSTEM_CONSTITUTION}
 {history_context}
 {user_q_str}
-{calc_block}
 HYBRID SEARCH RAG GROUNDING CONTEXT (BigQuery + SEC 10-K Corpus):
 {hybrid_rag_result.formatted_context_block}
 
@@ -213,7 +183,7 @@ Directly answer the user prompt above using the grounded context and tool output
 """
 
         datastore_path = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore"
-        log_tool_execution("vertex_ai_generate_content", "intent", {"model": self.reasoning_model, "tickers": tickers, "datastore": datastore_path})
+        log_tool_execution("vertex_ai_generate_content", "intent", {"model": self.reasoning_model, "datastore": datastore_path})
 
         tools = [
             calculate_financial_variance_tool,
@@ -223,34 +193,69 @@ Directly answer the user prompt above using the grounded context and tool output
         ]
         config = types.GenerateContentConfig(tools=tools)
 
-        response = self.client.models.generate_content(
-            model=self.reasoning_model,
-            contents=prompt,
-            config=config,
-        )
+        contents = [prompt]
+        max_iterations = 5
+        narrative = ""
+        calc_res = None
 
-        # Intercept and execute Gemini Native Function Calls
-        if getattr(response, "function_calls", None):
+        for iteration in range(max_iterations):
+            response = safe_generate_content(
+                self.client,
+                model=self.reasoning_model,
+                contents=contents,
+                config=config,
+            )
+
+            # If model returned no function_calls, we have our final text narrative
+            if not getattr(response, "function_calls", None):
+                narrative = response.text.strip() if (response and response.text) else ""
+                break
+
+            # Model returned function_calls: append assistant turn to contents history
+            if hasattr(response, "candidates") and response.candidates:
+                contents.append(response.candidates[0].content)
+
+            # Execute all requested function calls in this turn
+            function_response_parts = []
             for call in response.function_calls:
                 tool_name = call.name
                 tool_args = dict(call.args) if call.args else {}
-                log_tool_execution("gemini_native_function_call", "intent", {"tool": tool_name, "args": tool_args})
-                if tool_name == "calculate_financial_variance_tool":
-                    tool_res = calculate_financial_variance_tool(**tool_args)
-                    log_tool_execution("gemini_native_function_call", "outcome", tool_res)
-                elif tool_name == "query_bigquery_financial_metrics_tool":
-                    tool_res = query_bigquery_financial_metrics_tool(**tool_args)
-                    log_tool_execution("gemini_native_function_call", "outcome", tool_res)
-                elif tool_name == "search_sec_filing_chunks_tool":
-                    tool_res = search_sec_filing_chunks_tool(**tool_args)
-                    log_tool_execution("gemini_native_function_call", "outcome", {"count": len(tool_res)})
-                elif tool_name == "vertex_ai_search_datastore_tool":
-                    tool_res = vertex_ai_search_datastore_tool(**tool_args)
-                    log_tool_execution("gemini_native_function_call", "outcome", {"results_length": len(tool_res)})
+                log_tool_execution("gemini_native_function_call", "intent", {"tool": tool_name, "args": tool_args, "iteration": iteration})
 
-        narrative = response.text.strip() if response.text else ""
-        if not narrative and getattr(response, "function_calls", None):
-            narrative = f"Executed native tool calls: {[c.name for c in response.function_calls]} successfully."
+                try:
+                    if tool_name == "calculate_financial_variance_tool":
+                        tool_res = calculate_financial_variance_tool(**tool_args)
+                        if isinstance(tool_res, dict) and tool_res.get("is_success"):
+                            calc_res = tool_res
+                    elif tool_name == "query_bigquery_financial_metrics_tool":
+                        tool_res = query_bigquery_financial_metrics_tool(**tool_args)
+                    elif tool_name == "search_sec_filing_chunks_tool":
+                        tool_res = search_sec_filing_chunks_tool(**tool_args)
+                    elif tool_name == "vertex_ai_search_datastore_tool":
+                        tool_res = vertex_ai_search_datastore_tool(**tool_args)
+                    else:
+                        tool_res = {"error": f"Unknown tool name '{tool_name}'"}
+
+                    log_tool_execution(
+                        "gemini_native_function_call",
+                        "outcome",
+                        tool_res if isinstance(tool_res, dict) else {"count": len(tool_res)},
+                    )
+                except Exception as err:
+                    tool_res = {"error": str(err)}
+                    log_tool_execution("gemini_native_function_call", "outcome", tool_res, status="ERROR")
+
+                # Build native function response Part
+                part = types.Part.from_function_response(
+                    name=tool_name,
+                    response={"result": tool_res},
+                )
+                function_response_parts.append(part)
+
+            # Append user role turn containing function_response parts for next iteration
+            contents.append(types.Content(role="user", parts=function_response_parts))
+        else:
+            narrative = response.text.strip() if (response and response.text) else "Reached maximum tool execution loop limit."
 
         model_used = f"Vertex AI ({self.reasoning_model} + Native ADK Search & Tools)"
         log_tool_execution("vertex_ai_generate_content", "outcome", {"model": self.reasoning_model, "status": "SUCCESS"})
@@ -260,24 +265,11 @@ Directly answer the user prompt above using the grounded context and tool output
                 "is_success": False,
                 "error": "Vertex AI Gemini model execution failed. Please verify GCP ADC authentication (`gcloud auth application-default login`).",
                 "narrative": "⚠️ Unable to generate dynamic LLM response. Please run `gcloud auth application-default login` to re-authenticate with Google Cloud.",
-                "tickers": tickers,
-                "query_type": query_type,
-                "metric_name": metric_name,
-                "variance_result": calc_res,
-                "hybrid_search_result": hybrid_rag_result,
-                "citations": hybrid_rag_result.grounded_citations if hybrid_rag_result else [],
                 "model_used": "failed-auth",
             }
 
         return {
             "is_success": True,
-            "tickers": tickers,
-            "query_type": query_type,
-            "metric_name": metric_name,
-            "thematic_keyword": thematic_keyword,
-            "variance_result": calc_res,
-            "hybrid_search_result": hybrid_rag_result,
-            "citations": hybrid_rag_result.grounded_citations,
             "narrative": narrative,
             "model_used": model_used,
         }
@@ -337,7 +329,8 @@ Return ONLY valid JSON matching this schema:
   "thematic_keyword": "risk" | "AI" | "supply chain" | "R&D" | "cybersecurity" | ""
 }}
 """
-        resp = self.analyst_agent.client.models.generate_content(
+        resp = safe_generate_content(
+            self.analyst_agent.client,
             model=self.tool_model,
             contents=intent_prompt,
         )
@@ -407,31 +400,37 @@ Return ONLY valid JSON matching this schema:
             user_prompt=prompt,
             hybrid_rag_result=rag_res,
             context_summary=compacted.summary_of_older_turns,
-            tickers=tickers,
-            requested_years=requested_years,
-            metric_name=metric_name,
-            thematic_keyword=thematic_keyword,
-            query_type=query_type,
         )
 
-        if not analysis_res.get("is_success"):
-            return analysis_res
-
-        # 5. Save turn to persistent session store with query_type metadata
-        self.session_store.save_session_turn(
-            session_id=session_id,
-            user_query=prompt,
-            agent_response=analysis_res["narrative"],
-            metadata={"tickers": tickers, "metric_name": metric_name, "query_type": query_type},
-        )
-
-        if export_gcs_uri:
+        export_status_dict = None
+        if export_gcs_uri and analysis_res.get("is_success"):
             export_req = ExportReportRequest(
                 ticker=primary_ticker,
                 destination_gcs_uri=export_gcs_uri,
-                report_content=analysis_res["narrative"],
+                report_content=analysis_res.get("narrative", ""),
             )
             export_res = export_financial_report(export_req, human_approved=human_approved_export)
-            analysis_res["export_status"] = export_res.model_dump()
+            export_status_dict = export_res.model_dump()
 
-        return analysis_res
+        if analysis_res.get("is_success"):
+            # 5. Save turn to persistent session store with query_type metadata
+            self.session_store.save_session_turn(
+                session_id=session_id,
+                user_query=prompt,
+                agent_response=analysis_res.get("narrative", ""),
+                metadata={"tickers": tickers, "metric_name": metric_name, "query_type": query_type},
+            )
+
+        return {
+            "is_success": analysis_res.get("is_success", False),
+            "narrative": analysis_res.get("narrative", ""),
+            "model_used": analysis_res.get("model_used", ""),
+            "tickers": tickers,
+            "query_type": query_type,
+            "metric_name": metric_name,
+            "thematic_keyword": thematic_keyword,
+            "requested_years": requested_years,
+            "hybrid_search_result": rag_res,
+            "citations": rag_res.grounded_citations if rag_res else [],
+            "export_status": export_status_dict,
+        }
