@@ -154,17 +154,16 @@ class FinancialAnalystAgent:
         tickers: List[str] = [],
         requested_years: List[int] = [],
         metric_name: str = "",
+        thematic_keyword: str = "",
         query_type: str = "financial_summary",
-        metadata: Dict[str, Any] = {},
     ) -> Dict[str, Any]:
         """Synthesizes grounded financial narrative using Vertex AI Gemini model from RAG context."""
-        meta = metadata or {}
-        tickers = tickers or meta.get("tickers") or ([hybrid_rag_result.primary_metrics[0].ticker] if (hybrid_rag_result and hybrid_rag_result.primary_metrics) else [])
+        tickers = tickers or ([hybrid_rag_result.primary_metrics[0].ticker] if (hybrid_rag_result and hybrid_rag_result.primary_metrics) else [])
         if not tickers:
             raise ValueError("No ticker symbols available for financial analysis.")
         primary_ticker = tickers[0]
-        metric_name = metric_name or meta.get("metric_name") or ""
-        query_type = query_type or (hybrid_rag_result.query_type if hybrid_rag_result else "") or meta.get("query_type") or ""
+        metric_name = metric_name or ""
+        query_type = query_type or (hybrid_rag_result.query_type if hybrid_rag_result else "") or ""
 
         # 1. Compute variance result if structured metrics exist
         calc_res = None
@@ -275,6 +274,7 @@ Directly answer the user prompt above using the grounded context and tool output
             "tickers": tickers,
             "query_type": query_type,
             "metric_name": metric_name,
+            "thematic_keyword": thematic_keyword,
             "variance_result": calc_res,
             "hybrid_search_result": hybrid_rag_result,
             "citations": hybrid_rag_result.grounded_citations,
@@ -326,7 +326,7 @@ INSTRUCTIONS:
    - "peer_comparison": comparing multiple companies.
    - "variance_analysis": explicit calculations of growth, variance, or period-over-period percentage changes.
    - "financial_summary": general financial metrics lookup.
-3. Identify requested_years, metric_name, and thematic_keyword (e.g., 'AI', 'supply chain', 'R&D', 'risk').
+3. Identify requested_years, metric_name, and thematic_keyword (e.g., 'risk', 'AI', 'supply chain', 'R&D', 'cybersecurity'). If the query asks about risks or business disclosures, set thematic_keyword to 'risk'.
 
 Return ONLY valid JSON matching this schema:
 {{
@@ -334,7 +334,7 @@ Return ONLY valid JSON matching this schema:
   "tickers": ["TICKER1", "TICKER2"],
   "requested_years": [2023],
   "metric_name": "Revenue" | "Operating Income" | "Net Income",
-  "thematic_keyword": "AI" | "supply chain" | "R&D" | "cybersecurity" | ""
+  "thematic_keyword": "risk" | "AI" | "supply chain" | "R&D" | "cybersecurity" | ""
 }}
 """
         resp = self.analyst_agent.client.models.generate_content(
@@ -410,8 +410,8 @@ Return ONLY valid JSON matching this schema:
             tickers=tickers,
             requested_years=requested_years,
             metric_name=metric_name,
+            thematic_keyword=thematic_keyword,
             query_type=query_type,
-            metadata={"tickers": tickers, "metric_name": metric_name, "query_type": query_type},
         )
 
         if not analysis_res.get("is_success"):

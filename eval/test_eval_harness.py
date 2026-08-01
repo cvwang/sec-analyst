@@ -373,3 +373,52 @@ def test_thematic_tracking_qualitative_risk_disclosures(monkeypatch):
     assert len(res["narrative"]) > 0
     assert "unable to analyze" not in res["narrative"].lower()
     assert "unable to provide" not in res["narrative"].lower()
+
+
+def test_multiturn_qualitative_risk_followup(monkeypatch):
+    """Evaluates multi-turn qualitative risk factor follow-up retention when ticker is omitted in Turn 2."""
+    from agent.rag.vertex_search import VertexSearchResult, VertexAISearchClient
+
+    mock_results = [
+        VertexSearchResult(
+            id="chunk_1",
+            gcs_uri="gs://sec-analyst-sec-reports/filings/TSLA_2023_10K.md",
+            title="Tesla, Inc. 10-K Item 1A Risk Factors",
+            snippet="Tesla, Inc. faces risks related to vehicle production ramp-up, battery supply chain constraints, autonomous driving regulatory scrutiny, and competitive pricing dynamics.",
+        )
+    ]
+    captured_queries = []
+    def mock_search_filings(self, query, page_size=5):
+        captured_queries.append(query)
+        if "AI" in query and "risk" not in query.lower():
+            return []
+        return mock_results
+
+    monkeypatch.setattr(VertexAISearchClient, "search_filings", mock_search_filings)
+
+    orchestrator = RootOrchestrator()
+    session_id = "test_multiturn_risk_session"
+
+    # Turn 1: Initial financial highlights for TSLA
+    turn1_res = orchestrator.dispatch_query(
+        prompt="Explain Tesla 2023 financial highlights",
+        session_id=session_id,
+    )
+    assert turn1_res["is_success"] is True
+    assert turn1_res["tickers"] == ["TSLA"]
+
+    # Turn 2: Follow-up asking about business risks omitting ticker ("explain the business risks")
+    turn2_res = orchestrator.dispatch_query(
+        prompt="explain the business risks",
+        session_id=session_id,
+    )
+    assert turn2_res["is_success"] is True
+    assert turn2_res["tickers"] == ["TSLA"]
+    assert turn2_res["query_type"] == "thematic_tracking"
+    assert turn2_res["thematic_keyword"] == "risk"
+    assert turn2_res["hybrid_search_result"].is_success is True
+    assert len(turn2_res["hybrid_search_result"].text_chunks) > 0
+    assert turn2_res["narrative"] is not None
+    assert len(captured_queries) > 0
+    assert any("risk" in q.lower() for q in captured_queries)
+

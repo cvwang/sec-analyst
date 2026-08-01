@@ -71,9 +71,9 @@ class HybridSearchEngine:
 
             # 3. Fetch SEC Document Chunks from Corpus
             if request.query_type == "thematic_tracking":
-                kw = request.thematic_keyword or "AI"
+                kw = request.thematic_keyword or None
                 chunks = self.sec_corpus.search_chunks(ticker=primary_ticker, keyword=kw)
-                if not chunks:
+                if not chunks and kw:
                     chunks = self.sec_corpus.search_chunks(ticker=primary_ticker)
                 text_chunks.extend(chunks[:10])
             else:
