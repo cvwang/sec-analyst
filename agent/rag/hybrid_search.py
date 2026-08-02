@@ -71,18 +71,15 @@ class HybridSearchEngine:
 
             # 3. Fetch SEC Document Chunks from Corpus
             if request.query_type == "thematic_tracking":
-                kw = request.thematic_keyword or None
-                chunks = self.sec_corpus.search_chunks(ticker=primary_ticker, keyword=kw)
-                if not chunks and kw:
-                    chunks = self.sec_corpus.search_chunks(ticker=primary_ticker)
+                kw = request.thematic_keyword or "risk"
+                chunks = self.sec_corpus.search_chunks(query_str=kw, ticker=primary_ticker, requested_years=target_years)
                 text_chunks.extend(chunks[:10])
             else:
-                for yr in target_years:
-                    p_chunks = self.sec_corpus.search_chunks(ticker=primary_ticker, fiscal_year=yr)
-                    text_chunks.extend(p_chunks[:5])
+                p_chunks = self.sec_corpus.search_chunks(ticker=primary_ticker, requested_years=target_years)
+                text_chunks.extend(p_chunks[:5])
 
                 for sec_t in secondary_tickers:
-                    sec_chunks = self.sec_corpus.search_chunks(ticker=sec_t)
+                    sec_chunks = self.sec_corpus.search_chunks(ticker=sec_t, requested_years=target_years)
                     text_chunks.extend(sec_chunks[:5])
 
             # Extract Citations

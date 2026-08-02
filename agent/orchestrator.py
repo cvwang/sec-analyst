@@ -90,41 +90,7 @@ def export_financial_report(request: ExportReportRequest, human_approved: bool =
     return result
 
 
-def vertex_ai_search_datastore_tool(query: str) -> str:
-    """Queries the proprietary Vertex AI Search datastore holding SEC 10-K filings.
 
-    Args:
-        query: The natural language question or topic to search for in the filings.
-    """
-    log_tool_execution(
-        tool_name="vertex_ai_search_datastore_tool",
-        stage="intent",
-        payload={"query": query},
-    )
-    chunks = []
-    try:
-        client = discoveryengine.SearchServiceClient()
-        serving_config = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore/servingConfigs/default_search"
-
-        request = discoveryengine.SearchRequest(
-            serving_config=serving_config,
-            query=query,
-            page_size=5,
-        )
-        response = client.search(request)
-
-        for result in response.results:
-            derived_data = result.document.derived_struct_data
-            if "snippets" in derived_data:
-                chunks.append(derived_data["snippets"][0].get("snippet", ""))
-            elif "text" in derived_data:
-                chunks.append(derived_data.get("text", ""))
-    except Exception as e:
-        log_tool_execution("vertex_ai_search_datastore_tool", "outcome", {"error": str(e)}, status="ERROR")
-
-    res_str = "\n\n".join(chunks)
-    log_tool_execution("vertex_ai_search_datastore_tool", "outcome", {"count": len(chunks)}, status="SUCCESS")
-    return res_str
 
 
 class FinancialAnalystAgent:
@@ -189,7 +155,6 @@ Directly answer the user prompt above using the grounded context and tool output
             calculate_financial_variance_tool,
             query_bigquery_financial_metrics_tool,
             search_sec_filing_chunks_tool,
-            vertex_ai_search_datastore_tool,
         ]
         config = types.GenerateContentConfig(tools=tools)
 
@@ -231,8 +196,6 @@ Directly answer the user prompt above using the grounded context and tool output
                         tool_res = query_bigquery_financial_metrics_tool(**tool_args)
                     elif tool_name == "search_sec_filing_chunks_tool":
                         tool_res = search_sec_filing_chunks_tool(**tool_args)
-                    elif tool_name == "vertex_ai_search_datastore_tool":
-                        tool_res = vertex_ai_search_datastore_tool(**tool_args)
                     else:
                         tool_res = {"error": f"Unknown tool name '{tool_name}'"}
 
@@ -365,72 +328,87 @@ Return ONLY valid JSON matching this schema:
         if not prompt:
             raise ValueError("No query prompt provided.")
 
-        parsed = self.parse_natural_language_intent(prompt, session_id=session_id)
-        query_type = parsed["query_type"]
-        tickers = [t.upper() for t in parsed["tickers"] if t]
-        metric_name = parsed["metric_name"]
-        thematic_keyword = parsed["thematic_keyword"]
-        requested_years = parsed["requested_years"]
+        try:
+            parsed = self.parse_natural_language_intent(prompt, session_id=session_id)
+            query_type = parsed["query_type"]
+            tickers = [t.upper() for t in parsed["tickers"] if t]
+            metric_name = parsed["metric_name"]
+            thematic_keyword = parsed["thematic_keyword"]
+            requested_years = parsed["requested_years"]
 
-        if not tickers:
-            raise ValueError("No target ticker symbol provided for analysis.")
-        primary_ticker = tickers[0]
+            if not tickers:
+                raise ValueError("No target ticker symbol provided for analysis.")
+            primary_ticker = tickers[0]
 
-        # 1. Retrieve persistent session history and apply compaction
-        raw_history = self.session_store.get_session_history(session_id)
-        compacted = self.compactor.compact_history(raw_history)
+            # 1. Retrieve persistent session history and apply compaction
+            raw_history = self.session_store.get_session_history(session_id)
+            compacted = self.compactor.compact_history(raw_history)
 
-        # 2. Context caching for filing documents
-        cache_key = f"{primary_ticker}_{requested_years[0] if requested_years else 2023}_10K"
-        self.cache_manager.get_or_create_cache(cache_key, content=f"SEC 10K filing data for {primary_ticker}")
+            # 2. Context caching for filing documents
+            cache_key = f"{primary_ticker}_{requested_years[0] if requested_years else 2023}_10K"
+            self.cache_manager.get_or_create_cache(cache_key, content=f"SEC 10K filing data for {primary_ticker}")
 
-        # 3. Execute Hybrid Search RAG tailored to intent query_type
-        rag_res = self.hybrid_engine.execute_hybrid_search(
-            HybridSearchRequest(
-                query_type=query_type,
-                tickers=tickers,
-                requested_years=requested_years,
-                metric_name=metric_name or "",
-                thematic_keyword=thematic_keyword or "",
-            )
-        )
-
-        # 4. Run analysis with compacted context summary and RAG grounding
-        analysis_res = self.analyst_agent.run_analysis(
-            user_prompt=prompt,
-            hybrid_rag_result=rag_res,
-            context_summary=compacted.summary_of_older_turns,
-        )
-
-        export_status_dict = None
-        if export_gcs_uri and analysis_res.get("is_success"):
-            export_req = ExportReportRequest(
-                ticker=primary_ticker,
-                destination_gcs_uri=export_gcs_uri,
-                report_content=analysis_res.get("narrative", ""),
-            )
-            export_res = export_financial_report(export_req, human_approved=human_approved_export)
-            export_status_dict = export_res.model_dump()
-
-        if analysis_res.get("is_success"):
-            # 5. Save turn to persistent session store with query_type metadata
-            self.session_store.save_session_turn(
-                session_id=session_id,
-                user_query=prompt,
-                agent_response=analysis_res.get("narrative", ""),
-                metadata={"tickers": tickers, "metric_name": metric_name, "query_type": query_type},
+            # 3. Execute Hybrid Search RAG tailored to intent query_type
+            rag_res = self.hybrid_engine.execute_hybrid_search(
+                HybridSearchRequest(
+                    query_type=query_type,
+                    tickers=tickers,
+                    requested_years=requested_years,
+                    metric_name=metric_name or "",
+                    thematic_keyword=thematic_keyword or "",
+                )
             )
 
-        return {
-            "is_success": analysis_res.get("is_success", False),
-            "narrative": analysis_res.get("narrative", ""),
-            "model_used": analysis_res.get("model_used", ""),
-            "tickers": tickers,
-            "query_type": query_type,
-            "metric_name": metric_name,
-            "thematic_keyword": thematic_keyword,
-            "requested_years": requested_years,
-            "hybrid_search_result": rag_res,
-            "citations": rag_res.grounded_citations if rag_res else [],
-            "export_status": export_status_dict,
-        }
+            # 4. Run analysis with compacted context summary and RAG grounding
+            analysis_res = self.analyst_agent.run_analysis(
+                user_prompt=prompt,
+                hybrid_rag_result=rag_res,
+                context_summary=compacted.summary_of_older_turns,
+            )
+
+            export_status_dict = None
+            if export_gcs_uri and analysis_res.get("is_success"):
+                export_req = ExportReportRequest(
+                    ticker=primary_ticker,
+                    destination_gcs_uri=export_gcs_uri,
+                    report_content=analysis_res.get("narrative", ""),
+                )
+                export_res = export_financial_report(export_req, human_approved=human_approved_export)
+                export_status_dict = export_res.model_dump()
+
+            if analysis_res.get("is_success"):
+                # 5. Save turn to persistent session store with query_type metadata
+                self.session_store.save_session_turn(
+                    session_id=session_id,
+                    user_query=prompt,
+                    agent_response=analysis_res.get("narrative", ""),
+                    metadata={"tickers": tickers, "metric_name": metric_name, "query_type": query_type},
+                )
+
+            return {
+                "is_success": analysis_res.get("is_success", False),
+                "narrative": analysis_res.get("narrative", ""),
+                "model_used": analysis_res.get("model_used", ""),
+                "tickers": tickers,
+                "query_type": query_type,
+                "metric_name": metric_name,
+                "thematic_keyword": thematic_keyword,
+                "requested_years": requested_years,
+                "hybrid_search_result": rag_res,
+                "citations": rag_res.grounded_citations if rag_res else [],
+                "export_status": export_status_dict,
+            }
+        except Exception as e:
+            err_msg = str(e)
+            if "Reauthentication is needed" in err_msg or "RefreshError" in err_msg or "401" in err_msg:
+                narrative = "⚠️ GCP Authentication Expired: Reauthentication is needed. Please run `gcloud auth application-default login` in your terminal to re-authenticate with Google Cloud."
+            else:
+                narrative = f"⚠️ Query execution failed: {err_msg}"
+
+            log_tool_execution("dispatch_query", "outcome", {"error": err_msg}, status="ERROR")
+            return {
+                "is_success": False,
+                "error": err_msg,
+                "narrative": narrative,
+                "model_used": "failed-auth",
+            }

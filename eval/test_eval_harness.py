@@ -290,7 +290,7 @@ def test_native_function_calling_dispatch():
     assert bq_res["ticker"] == "AAPL"
     assert bq_res["revenue"] == 383285.0
 
-    sec_res = search_sec_filing_chunks_tool(ticker="AAPL", fiscal_year=2023, keyword="revenue")
+    sec_res = search_sec_filing_chunks_tool(query="revenue", ticker="AAPL", requested_years=[2023])
     assert isinstance(sec_res, list)
 
     # 2. Test Agent interception of Gemini response.function_calls
@@ -472,4 +472,24 @@ def test_vertex_search_grounding_chunks_snippet_extraction():
     assert results[2].snippet == "Real unabridged SEC filing text for passage 3"
     for res in results:
         assert "Grounded passage" not in res.snippet
+
+
+def test_formulate_vertex_search_query():
+    """Verifies that formulate_vertex_search_query strips preamble noise and anchors metadata."""
+    from agent.rag.sec_corpus import formulate_vertex_search_query
+
+    q1 = formulate_vertex_search_query(
+        query="Can you please explain to me what Tesla's business risks were in 2023?",
+        ticker="TSLA",
+        fiscal_year=2023,
+    )
+    assert q1 == "TSLA 2023 what Tesla's business risks were in 2023?"
+    assert "Can you please explain" not in q1
+
+    q2 = formulate_vertex_search_query(
+        ticker="NVDA",
+        requested_years=[2023, 2024],
+        keyword="AI R&D",
+    )
+    assert q2 == "NVDA 2023 2024 AI R&D"
 
