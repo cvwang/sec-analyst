@@ -12,15 +12,6 @@ An agentic financial analyst system designed to automate period-over-period fina
 
 ---
 
-## 95-Point Assessment Rubric Mapping
-1. **Tool & Interface Design (20 pts):** Pydantic input/output schemas, descriptive naming (`calculate_financial_variance`, `fetch_sec_metrics`), guided error handling wrappers.
-2. **Context & Memory (20 pts):** System constitution, history compaction/summarization, persistent session state.
-3. **Orchestration & Logic (25 pts):** Multi-agent supervisor pattern, model routing, strict grounding guardrails, human-in-the-loop confirmation stops.
-4. **Observability & Tracing (20 pts):** Structured JSON logs, intent vs. outcome logging, OpenTelemetry tracing, active PII scrubbing.
-5. **Infrastructure & CI/CD (15 pts):** Automated eval suite with golden dataset, Terraform IaC (`terraform/main.tf`), Secret Manager environment injection.
-
----
-
 ## Folder Structure
 ```
 .
