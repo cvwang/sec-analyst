@@ -4,23 +4,40 @@ import os
 import json
 import re
 import time
+import asyncio
+import concurrent.futures
 import google.auth
 from google.cloud import discoveryengine_v1 as discoveryengine
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
+from google.adk.agents.llm_agent import LlmAgent
+from google.adk.tools.agent_tool import AgentTool
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
 from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
 from agent.tools.calculation_engine import calculate_financial_variance, calculate_financial_variance_tool, VarianceRequest
 from agent.rag.bigquery_store import query_bigquery_financial_metrics_tool
-from agent.rag.sec_corpus import search_sec_filing_chunks_tool
+from agent.subagents.search_subagent import search_tool, search_agent
 from agent.rag.hybrid_search import HybridSearchEngine, HybridSearchRequest, HybridSearchResult
 from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager
 from agent.memory.session_store import PersistentSessionStore
 from agent.memory.async_memory import AsyncMemoryManager
 from agent.observability.logging_config import log_tool_execution
 from agent.observability.tracer import trace_span
+
+
+def _exec_async(coro_fn):
+    """Executes an async coroutine safely, supporting both sync contexts and active event loops."""
+    try:
+        return asyncio.run(coro_fn())
+    except RuntimeError as e:
+        if "running event loop" in str(e):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(lambda: asyncio.run(coro_fn())).result()
+        raise e
 
 
 def safe_generate_content(client, model, contents, config=None, retries=3, delay=2):
@@ -90,11 +107,8 @@ def export_financial_report(request: ExportReportRequest, human_approved: bool =
     return result
 
 
-
-
-
 class FinancialAnalystAgent:
-    """Financial Analyst Agent using Vertex AI Gemini for financial reasoning and dynamic tool calling."""
+    """Financial Analyst Agent using Google ADK LlmAgent and Runner for financial reasoning and dynamic tool calling."""
 
     def __init__(self):
         self.model_name = settings.reasoning_model
@@ -102,6 +116,27 @@ class FinancialAnalystAgent:
         self.constitution = SYSTEM_CONSTITUTION
         self.client = self._init_genai_client()
         self.hybrid_engine = HybridSearchEngine()
+
+        os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
+        os.environ.setdefault("GOOGLE_CLOUD_PROJECT", settings.gcp_project_id)
+        os.environ.setdefault("GOOGLE_CLOUD_LOCATION", settings.gcp_region)
+
+        self.root_agent = LlmAgent(
+            name="root_analyst_agent",
+            model=self.reasoning_model,
+            instruction=SYSTEM_CONSTITUTION,
+            tools=[
+                search_tool,
+                calculate_financial_variance_tool,
+                query_bigquery_financial_metrics_tool,
+            ],
+        )
+        self.session_service = InMemorySessionService()
+        self.runner = Runner(
+            app_name="sec_analyst",
+            agent=self.root_agent,
+            session_service=self.session_service,
+        )
 
     def _init_genai_client(self) -> Optional[genai.Client]:
         """Initializes GenAI client prioritizing Vertex AI for Datastore Search compatibility, with API Key fallback."""
@@ -130,7 +165,7 @@ class FinancialAnalystAgent:
         hybrid_rag_result: HybridSearchResult,
         context_summary: str = "",
     ) -> Dict[str, Any]:
-        """Synthesizes grounded financial narrative using Vertex AI Gemini model from RAG context."""
+        """Synthesizes grounded financial narrative using Google ADK Runner and LlmAgent from RAG context."""
         history_context = f"\nCOMPACTED HISTORY CONTEXT:\n{context_summary}\n" if context_summary else ""
         user_q_str = f"USER PROMPT: {user_prompt}" if user_prompt else "USER REQUEST: Analyze financial filing data."
 
@@ -149,84 +184,36 @@ Directly answer the user prompt above using the grounded context and tool output
 """
 
         datastore_path = f"projects/{settings.gcp_project_id}/locations/global/collections/default_collection/dataStores/sec-10k-filings-datastore"
-        log_tool_execution("vertex_ai_generate_content", "intent", {"model": self.reasoning_model, "datastore": datastore_path})
+        log_tool_execution("adk_runner_execution", "intent", {"model": self.reasoning_model, "datastore": datastore_path})
 
-        tools = [
-            calculate_financial_variance_tool,
-            query_bigquery_financial_metrics_tool,
-            search_sec_filing_chunks_tool,
-        ]
-        config = types.GenerateContentConfig(tools=tools)
-
-        contents = [prompt]
-        max_iterations = 5
-        narrative = ""
-        calc_res = None
-
-        for iteration in range(max_iterations):
-            response = safe_generate_content(
-                self.client,
-                model=self.reasoning_model,
-                contents=contents,
-                config=config,
+        async def _run_runner():
+            session = await self.session_service.create_session(
+                app_name="sec_analyst", user_id="analyst_user"
             )
+            content = types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
+            final_text = ""
+            async for event in self.runner.run_async(
+                user_id="analyst_user", session_id=session.id, new_message=content
+            ):
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            final_text = part.text
+            return final_text
 
-            # If model returned no function_calls, we have our final text narrative
-            if not getattr(response, "function_calls", None):
-                narrative = response.text.strip() if (response and response.text) else ""
-                break
+        try:
+            narrative = _exec_async(_run_runner).strip()
+        except Exception as err:
+            log_tool_execution("adk_runner_execution", "outcome", {"error": str(err)}, status="ERROR")
+            narrative = ""
 
-            # Model returned function_calls: append assistant turn to contents history
-            if hasattr(response, "candidates") and response.candidates:
-                contents.append(response.candidates[0].content)
-
-            # Execute all requested function calls in this turn
-            function_response_parts = []
-            for call in response.function_calls:
-                tool_name = call.name
-                tool_args = dict(call.args) if call.args else {}
-                log_tool_execution("gemini_native_function_call", "intent", {"tool": tool_name, "args": tool_args, "iteration": iteration})
-
-                try:
-                    if tool_name == "calculate_financial_variance_tool":
-                        tool_res = calculate_financial_variance_tool(**tool_args)
-                        if isinstance(tool_res, dict) and tool_res.get("is_success"):
-                            calc_res = tool_res
-                    elif tool_name == "query_bigquery_financial_metrics_tool":
-                        tool_res = query_bigquery_financial_metrics_tool(**tool_args)
-                    elif tool_name == "search_sec_filing_chunks_tool":
-                        tool_res = search_sec_filing_chunks_tool(**tool_args)
-                    else:
-                        tool_res = {"error": f"Unknown tool name '{tool_name}'"}
-
-                    log_tool_execution(
-                        "gemini_native_function_call",
-                        "outcome",
-                        tool_res if isinstance(tool_res, dict) else {"count": len(tool_res)},
-                    )
-                except Exception as err:
-                    tool_res = {"error": str(err)}
-                    log_tool_execution("gemini_native_function_call", "outcome", tool_res, status="ERROR")
-
-                # Build native function response Part
-                part = types.Part.from_function_response(
-                    name=tool_name,
-                    response={"result": tool_res},
-                )
-                function_response_parts.append(part)
-
-            # Append user role turn containing function_response parts for next iteration
-            contents.append(types.Content(role="user", parts=function_response_parts))
-        else:
-            narrative = response.text.strip() if (response and response.text) else "Reached maximum tool execution loop limit."
-
-        model_used = f"Vertex AI ({self.reasoning_model} + Native ADK Search & Tools)"
-        log_tool_execution("vertex_ai_generate_content", "outcome", {"model": self.reasoning_model, "status": "SUCCESS"})
+        model_used = f"Vertex AI ({self.reasoning_model} + ADK Search Sub-Agent & Tools)"
+        log_tool_execution("adk_runner_execution", "outcome", {"model": self.reasoning_model, "status": "SUCCESS"})
 
         if not narrative:
             return {
                 "is_success": False,
-                "error": "Vertex AI Gemini model execution failed. Please verify GCP ADC authentication (`gcloud auth application-default login`).",
+                "error": "Google ADK Runner model execution failed. Please verify GCP ADC authentication (`gcloud auth application-default login`).",
                 "narrative": "⚠️ Unable to generate dynamic LLM response. Please run `gcloud auth application-default login` to re-authenticate with Google Cloud.",
                 "model_used": "failed-auth",
             }
