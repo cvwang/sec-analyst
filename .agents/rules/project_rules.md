@@ -3,6 +3,10 @@
 ## Project Overview & Architecture
 - **Framework**: Google Agent Development Kit (ADK) (`RootOrchestrator`, sub-agents, custom tools).
 - **Core Goal**: Agentic financial analyst automating financial variance analysis (Revenue, Operating Income, Net Income) and SEC 10-K filing tracking.
+- **Sources of Truth**: The authoritative sources of truth for all project requirements, architectural design decisions, and scope are:
+  1. [`FDE Onboarding Project.md`](file:///Users/cvwang/Documents/gcp/sec-edgar-analyst/FDE%20Onboarding%20Project.md)
+  2. [`fsi_scoping.md`](file:///Users/cvwang/Documents/gcp/sec-edgar-analyst/fsi_scoping.md)
+  3. [`fsi_tdd.md`](file:///Users/cvwang/Documents/gcp/sec-edgar-analyst/fsi_tdd.md)
 - **Directory Structure**:
   - `agent/`: Core agent code including orchestrator, tools (`calculation_engine`, `sec_retriever`), context caching, guardrails, and observability.
   - `eval/`: Evaluation harness and golden dataset (`test_eval_harness.py`, `golden_dataset.json`).
