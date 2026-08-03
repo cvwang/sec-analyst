@@ -7,4 +7,5 @@ opentelemetry-api
 opentelemetry-sdk
 python-json-logger
 google-cloud-bigquery
+google-cloud-modelarmor
 pytest

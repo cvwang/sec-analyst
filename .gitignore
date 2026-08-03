@@ -1,7 +1,6 @@
 .env
 *.env
 !.env.example
-agent/config.py
 __pycache__/
 *.pyc
 .DS_Store

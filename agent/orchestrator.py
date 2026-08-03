@@ -3,12 +3,14 @@
 import os
 import asyncio
 import concurrent.futures
-from typing import Dict, Any
+import logging
+from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 from google.genai import types
 from google.adk.agents.llm_agent import LlmAgent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
+from google.adk.models import LlmRequest, LlmResponse
 from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
 from agent.tools.calculation_engine import calculate_financial_variance_tool
@@ -17,6 +19,74 @@ from agent.subagents.search_subagent import search_tool
 from agent.memory.session_store import PersistentSessionStore
 from agent.observability.logging_config import log_tool_execution
 from agent.observability.tracer import trace_span
+from agent.guardrails.model_armor import model_armor_guard
+
+logger = logging.getLogger(__name__)
+
+
+def model_armor_before_model_callback(callback_context, llm_request: LlmRequest) -> Optional[LlmResponse]:
+    """Sanitize user input prompt ingress via Model Armor before calling the LLM."""
+    prompt_text = ""
+    if llm_request and llm_request.contents:
+        for content in reversed(llm_request.contents):
+            if content.parts:
+                for part in content.parts:
+                    if getattr(part, "text", None):
+                        prompt_text = part.text
+                        break
+            if prompt_text:
+                break
+
+    if not prompt_text:
+        return None
+
+    res = model_armor_guard.sanitize_user_prompt(prompt_text)
+    if res.is_blocked:
+        logger.warning(
+            f"[ModelArmorCallback] Short-circuiting execution at before_model_callback stage. "
+            f"Triggered category={res.matched_filter}"
+        )
+        return LlmResponse(
+            content=types.Content(
+                role="model",
+                parts=[
+                    types.Part.from_text(
+                        text=f"[MODEL_ARMOR_BLOCK:STAGE=INGRESS:CATEGORY={res.matched_filter}] {res.rejection_message}"
+                    )
+                ],
+            )
+        )
+    return None
+
+
+def model_armor_after_model_callback(callback_context, llm_response: LlmResponse) -> Optional[LlmResponse]:
+    """Sanitize LLM model response egress via Model Armor before returning content to caller."""
+    response_text = ""
+    if llm_response and llm_response.content and llm_response.content.parts:
+        for part in llm_response.content.parts:
+            if getattr(part, "text", None):
+                response_text += part.text
+
+    if not response_text:
+        return None
+
+    res = model_armor_guard.sanitize_model_response(response_text)
+    if res.is_blocked:
+        logger.warning(
+            f"[ModelArmorCallback] Short-circuiting execution at after_model_callback stage. "
+            f"Triggered category={res.matched_filter}"
+        )
+        return LlmResponse(
+            content=types.Content(
+                role="model",
+                parts=[
+                    types.Part.from_text(
+                        text=f"[MODEL_ARMOR_BLOCK:STAGE=EGRESS:CATEGORY={res.matched_filter}] {res.rejection_message}"
+                    )
+                ],
+            )
+        )
+    return None
 
 
 def _exec_async(coro_fn):
@@ -99,6 +169,8 @@ class FinancialAnalystAgent:
             name="root_analyst_agent",
             model=self.reasoning_model,
             instruction=SYSTEM_CONSTITUTION,
+            before_model_callback=model_armor_before_model_callback,
+            after_model_callback=model_armor_after_model_callback,
             tools=[
                 search_tool,
                 calculate_financial_variance_tool,
@@ -153,6 +225,36 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
         except Exception as err:
             log_tool_execution("adk_runner_execution", "outcome", {"error": str(err)}, status="ERROR")
             narrative = ""
+
+        # Intercept Model Armor hard-fail block responses
+        if "[MODEL_ARMOR_BLOCK:" in narrative:
+            stage = "ingress" if "STAGE=INGRESS" in narrative else "egress"
+            category = "SECURITY_POLICY"
+            if "CATEGORY=" in narrative:
+                try:
+                    category = narrative.split("CATEGORY=")[1].split("]")[0]
+                except IndexError:
+                    category = "SECURITY_POLICY"
+
+            clean_narrative = narrative
+            if "]" in narrative:
+                clean_narrative = narrative.split("]", 1)[1].strip()
+
+            log_tool_execution(
+                "adk_runner_execution",
+                "outcome",
+                {"model_armor_blocked": True, "stage": stage, "category": category},
+                status="BLOCKED",
+            )
+            return {
+                "is_success": False,
+                "is_model_armor_blocked": True,
+                "blocked_stage": stage,
+                "triggered_category": category,
+                "narrative": clean_narrative,
+                "error": "MODEL_ARMOR_BLOCK",
+                "model_used": "Model Armor Guardrail",
+            }
 
         model_used = f"Vertex AI ({self.reasoning_model} + ADK Search Sub-Agent & Tools)"
         log_tool_execution("adk_runner_execution", "outcome", {"model": self.reasoning_model, "status": "SUCCESS"})

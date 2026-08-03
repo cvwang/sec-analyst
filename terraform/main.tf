@@ -38,6 +38,12 @@ resource "google_project_service" "aiplatform_api" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "modelarmor_api" {
+  project            = var.project_id
+  service            = "modelarmor.googleapis.com"
+  disable_on_destroy = false
+}
+
 # Cloud Storage Bucket for SEC Filing Cache & Export Reports
 resource "google_storage_bucket" "sec_filings_bucket" {
   name                     = "${var.project_id}-sec-reports"
@@ -103,6 +109,14 @@ resource "google_cloud_run_v2_service" "agent_service" {
         name  = "TOOL_MODEL"
         value = "gemini-3.5-flash"
       }
+      env {
+        name  = "MODEL_ARMOR_ENABLED"
+        value = "true"
+      }
+      env {
+        name  = "MODEL_ARMOR_TEMPLATE_ID"
+        value = "sec-analyst-model-armor-template"
+      }
 
       resources {
         limits = {
@@ -118,5 +132,8 @@ resource "google_cloud_run_v2_service" "agent_service" {
     }
   }
 
-  depends_on = [google_project_service.cloudrun_api]
+  depends_on = [
+    google_project_service.cloudrun_api,
+    google_project_service.modelarmor_api,
+  ]
 }
