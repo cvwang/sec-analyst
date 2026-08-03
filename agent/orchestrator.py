@@ -89,7 +89,6 @@ class FinancialAnalystAgent:
     """Financial Analyst Agent using Google ADK LlmAgent and Runner for financial reasoning and dynamic tool calling."""
 
     def __init__(self):
-        self.model_name = settings.reasoning_model
         self.reasoning_model = settings.reasoning_model
 
         os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")

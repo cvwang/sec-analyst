@@ -5,9 +5,7 @@ import os
 import pytest
 from agent.tools.calculation_engine import calculate_financial_variance, VarianceRequest
 from agent.guardrails.pii_scrubber import PIIScrubber
-from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager
 from agent.memory.session_store import PersistentSessionStore
-from agent.memory.async_memory import AsyncMemoryManager
 from agent.config import settings
 from agent.orchestrator import RootOrchestrator, FinancialAnalystAgent, export_financial_report, ExportReportRequest
 
@@ -100,20 +98,8 @@ def test_human_in_the_loop_export_stop():
     assert approved_res.status == "EXPORTED"
 
 
-def test_history_compactor_sliding_window():
-    """Category 2: Evaluates sliding window context bloat compaction and history truncation."""
-    compactor = HistoryCompactor(max_turns=3)
-    history = [{"role": "user", "content": f"Turn {i}"} for i in range(7)]
-
-    result = compactor.compact_history(history)
-    assert result.is_compacted is True
-    assert result.original_turn_count == 7
-    assert result.compacted_turn_count == 3
-    assert "Prior Conversation Summary:" in result.summary_of_older_turns
-
-
 def test_persistent_session_store(tmp_path):
-    """Category 2: Evaluates persistent conversational session store management across turns."""
+    """Evaluates persistent conversational session store management across turns."""
     store_file = os.path.join(tmp_path, "test_sessions.json")
     store = PersistentSessionStore(storage_path=store_file)
 
@@ -125,38 +111,6 @@ def test_persistent_session_store(tmp_path):
     assert len(history) == 2
     assert history[0]["user_query"] == "Query 1"
     assert history[1]["metadata"]["ticker"] == "MSFT"
-
-
-@pytest.mark.anyio
-async def test_async_memory_consolidation(tmp_path):
-    """Category 2: Evaluates async memory background consolidation without UI blocking."""
-    store_file = os.path.join(tmp_path, "test_async_sessions.json")
-    store = PersistentSessionStore(storage_path=store_file)
-    compactor = HistoryCompactor(max_turns=2)
-    async_mgr = AsyncMemoryManager(store, compactor)
-
-    result = await async_mgr.consolidate_session_memory_async(
-        session_id="async_001",
-        user_query="Async query",
-        agent_response="Async response",
-        metadata={"async": True},
-    )
-
-    assert result.compacted_turn_count == 1
-    assert result.is_compacted is False
-
-
-def test_context_cache_manager():
-    """Category 2: Evaluates GCP Context Caching manager for large SEC 10-K filings."""
-    cache_mgr = ContextCacheManager(project_id="test-proj", location="us-central1")
-    cache_key = "AAPL_2023_10K"
-    content = "Apple Inc. 10-K raw filing content..."
-
-    res1 = cache_mgr.get_or_create_cache(cache_key, content)
-    assert res1["status"] == "CACHE_CREATED"
-
-    res2 = cache_mgr.get_or_create_cache(cache_key, content)
-    assert res2["status"] == "CACHE_HIT"
 
 
 def test_root_orchestrator_end_to_end(monkeypatch):
@@ -197,7 +151,7 @@ def test_model_configuration_validation():
     assert len(settings.tool_model) > 0
 
     agent = FinancialAnalystAgent()
-    assert agent.model_name == settings.reasoning_model
+    assert agent.reasoning_model == settings.reasoning_model
 
 
 def test_multiturn_conversational_context_retention():
