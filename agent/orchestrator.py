@@ -1,27 +1,20 @@
-"""ADK Root Orchestrator and Financial Analyst Agent supervising financial variance, peer comparison, and thematic tracking with Hybrid Search RAG."""
+"""ADK Root Orchestrator and Financial Analyst Agent supervising financial variance, peer comparison, and thematic tracking."""
 
 import os
-import json
-import re
-import time
 import asyncio
 import concurrent.futures
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 from pydantic import BaseModel, Field
-from google import genai
 from google.genai import types
 from google.adk.agents.llm_agent import LlmAgent
-from google.adk.tools.agent_tool import AgentTool
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
-from agent.tools.calculation_engine import calculate_financial_variance, calculate_financial_variance_tool, VarianceRequest
+from agent.tools.calculation_engine import calculate_financial_variance_tool
 from agent.rag.bigquery_store import query_bigquery_financial_metrics_tool
-from agent.subagents.search_subagent import search_tool, search_agent
-from agent.memory.cache_manager import HistoryCompactor, ContextCacheManager
+from agent.subagents.search_subagent import search_tool
 from agent.memory.session_store import PersistentSessionStore
-from agent.memory.async_memory import AsyncMemoryManager
 from agent.observability.logging_config import log_tool_execution
 from agent.observability.tracer import trace_span
 
@@ -98,8 +91,6 @@ class FinancialAnalystAgent:
     def __init__(self):
         self.model_name = settings.reasoning_model
         self.reasoning_model = settings.reasoning_model
-        self.constitution = SYSTEM_CONSTITUTION
-        self._genai_client = None
 
         os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
         os.environ.setdefault("GOOGLE_CLOUD_PROJECT", settings.gcp_project_id)
@@ -121,25 +112,6 @@ class FinancialAnalystAgent:
             agent=self.root_agent,
             session_service=self.session_service,
         )
-
-    @property
-    def client(self) -> genai.Client:
-        """Lazily initializes GenAI client for intent parsing."""
-        if self._genai_client is None:
-            try:
-                self._genai_client = genai.Client(
-                    vertexai=True,
-                    project=settings.gcp_project_id,
-                    location=settings.gcp_region,
-                )
-            except Exception:
-                api_key = os.getenv("GEMINI_API_KEY")
-                self._genai_client = genai.Client(api_key=api_key) if api_key else genai.Client()
-        return self._genai_client
-
-    @client.setter
-    def client(self, client: genai.Client):
-        self._genai_client = client
 
     @trace_span("FinancialAnalystAgent.run_analysis")
     def run_analysis(
@@ -208,9 +180,6 @@ class RootOrchestrator:
         self.reasoning_model = settings.reasoning_model
         self.analyst_agent = FinancialAnalystAgent()
         self.session_store = PersistentSessionStore()
-        self.compactor = HistoryCompactor()
-        self.cache_manager = ContextCacheManager(settings.gcp_project_id, settings.gcp_region)
-        self.async_memory = AsyncMemoryManager(self.session_store, self.compactor)
 
     @trace_span("RootOrchestrator.dispatch")
     def dispatch_query(
