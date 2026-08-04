@@ -2,7 +2,9 @@
 
 This repository defines workspace rules for AI agents operating on the **SEC EDGAR Natural Language Analyst** codebase.
 
-Full detailed rules and behavioral guidelines are located in [.agents/rules/project_rules.md](file:///.agents/rules/project_rules.md).
+Full detailed rules and behavioral guidelines are located in:
+- [.agents/rules/project_rules.md](file:///.agents/rules/project_rules.md)
+- [.agents/rules/project_engineering_standards.md](file:///.agents/rules/project_engineering_standards.md)
 
 ## Authoritative Sources of Truth
 All requirements, specifications, and scope decisions MUST be evaluated against:

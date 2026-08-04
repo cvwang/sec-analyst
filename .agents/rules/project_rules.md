@@ -1,5 +1,7 @@
 # Workspace Rules for SEC EDGAR Natural Language Analyst
 
+Note: Engineering standards defined in [.agents/rules/project_engineering_standards.md](file:///.agents/rules/project_engineering_standards.md) apply to all work in this repository.
+
 ## Project Overview & Architecture
 - **Framework**: Google Agent Development Kit (ADK) (`RootOrchestrator`, sub-agents, custom tools).
 - **Core Goal**: Agentic financial analyst automating financial variance analysis (Revenue, Operating Income, Net Income) and SEC 10-K filing tracking.
