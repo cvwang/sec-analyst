@@ -2,22 +2,26 @@
 
 Sanitizes user prompt ingress and model response egress using the official
 google-cloud-modelarmor SDK client (`modelarmor_v1.ModelArmorClient`) with typed
-requests, retry logic, explicit fail-closed outage handling, and local fallback capabilities.
+requests, smart retry logic for transient errors, explicit fail-closed outage handling,
+and gated offline mode configuration.
 """
 
 import os
 import re
 import time
-import logging
 from typing import Optional, List, Dict, Any, Callable
 from pydantic import BaseModel, Field
 import google.auth
 from google.api_core.client_options import ClientOptions
-from google.api_core.exceptions import GoogleAPICallError
+from google.api_core.exceptions import (
+    GoogleAPICallError,
+    BadRequest,
+    Unauthorized,
+    PermissionDenied,
+    NotFound,
+)
 from google.cloud import modelarmor_v1
 from agent.config import settings
-
-logger = logging.getLogger(__name__)
 
 # Known prompt injection & jailbreak trigger patterns for offline fallback testing
 INJECTION_KEYWORDS = [
@@ -59,7 +63,10 @@ class ModelArmorGuard:
         self.location = location or settings.model_armor_location
         self.template_id = template_id or settings.model_armor_template_id
         self.enabled = settings.model_armor_enabled
-        self.fail_open = settings.model_armor_fail_open
+        self.unavailable_policy = getattr(
+            settings, "model_armor_unavailable_policy", "fail_closed"
+        ).lower()
+        self.offline_mode = getattr(settings, "model_armor_offline_mode", False)
 
         self.template_path = (
             f"projects/{self.project_id}/locations/{self.location}/templates/{self.template_id}"
@@ -76,8 +83,7 @@ class ModelArmorGuard:
             )
             self._client = modelarmor_v1.ModelArmorClient(client_options=client_options)
             return self._client
-        except Exception as err:
-            logger.debug(f"Unable to initialize google-cloud-modelarmor SDK client: {err}")
+        except Exception:
             return None
 
     def _call_with_retry(
@@ -86,28 +92,23 @@ class ModelArmorGuard:
         max_retries: int = 2,
         initial_backoff_sec: float = 0.5,
     ) -> Any:
-        """Executes SDK API call with exponential backoff retries for transient errors."""
+        """Executes SDK API call with exponential backoff retries for transient errors only."""
         last_exception = None
         for attempt in range(max_retries + 1):
             try:
                 return call_fn()
+            except (BadRequest, Unauthorized, PermissionDenied, NotFound) as non_retryable_err:
+                raise non_retryable_err
             except (GoogleAPICallError, Exception) as err:
                 last_exception = err
-                # If API is disabled on GCP project (403 Service Disabled), don't retry in vain
                 err_msg = str(err)
                 if "API has not been used" in err_msg or "disabled" in err_msg:
                     raise err
 
                 if attempt < max_retries:
                     sleep_dur = initial_backoff_sec * (2**attempt)
-                    logger.warning(
-                        f"Model Armor SDK call attempt {attempt + 1} failed: {err}. Retrying in {sleep_dur}s..."
-                    )
                     time.sleep(sleep_dur)
                 else:
-                    logger.error(
-                        f"Model Armor SDK call failed after {max_retries + 1} attempts: {err}"
-                    )
                     raise last_exception
 
     def sanitize_user_prompt(self, prompt: str) -> ModelArmorResult:
@@ -115,18 +116,15 @@ class ModelArmorGuard:
         if not self.enabled:
             return ModelArmorResult(is_blocked=False)
 
-        # 1. Offline fallback test checking for injection / jailbreak patterns
-        offline_result = self._check_offline_ingress(prompt)
-        if offline_result.is_blocked:
-            logger.warning(
-                f"[ModelArmorGuard] INGRESS BLOCK triggered category={offline_result.matched_filter}"
-            )
-            return offline_result
+        # 1. Gated Offline Mode: Only run offline pattern check if explicitly enabled for local dev
+        if self.offline_mode:
+            return self._check_offline_ingress(prompt)
 
-        # 2. Official SDK Client call
+        # 2. Live Production Path: Go straight to GCP Model Armor SDK Client
         client = self._get_client()
         if client is None:
-            return offline_result
+            err = RuntimeError("ModelArmorClient initialization failed (client is None)")
+            return self._handle_outage(stage="ingress", error=err, text=prompt)
 
         request = modelarmor_v1.SanitizeUserPromptRequest(
             name=self.template_path,
@@ -139,26 +137,22 @@ class ModelArmorGuard:
             )
             return self._parse_sdk_response(response, stage="ingress")
         except Exception as err:
-            logger.error(f"Model Armor sanitize_user_prompt API error / outage: {err}")
-            return self._handle_outage(stage="ingress", error=err, offline_fallback=offline_result)
+            return self._handle_outage(stage="ingress", error=err, text=prompt)
 
     def sanitize_model_response(self, model_response_text: str) -> ModelArmorResult:
         """Screen model response before it reaches the user (Egress callback)."""
         if not self.enabled:
             return ModelArmorResult(is_blocked=False)
 
-        # 1. Offline fallback test checking for harmful model output
-        offline_result = self._check_offline_egress(model_response_text)
-        if offline_result.is_blocked:
-            logger.warning(
-                f"[ModelArmorGuard] EGRESS BLOCK triggered category={offline_result.matched_filter}"
-            )
-            return offline_result
+        # 1. Gated Offline Mode: Only run offline pattern check if explicitly enabled for local dev
+        if self.offline_mode:
+            return self._check_offline_egress(model_response_text)
 
-        # 2. Official SDK Client call
+        # 2. Live Production Path: Go straight to GCP Model Armor SDK Client
         client = self._get_client()
         if client is None:
-            return offline_result
+            err = RuntimeError("ModelArmorClient initialization failed (client is None)")
+            return self._handle_outage(stage="egress", error=err, text=model_response_text)
 
         request = modelarmor_v1.SanitizeModelResponseRequest(
             name=self.template_path,
@@ -171,29 +165,19 @@ class ModelArmorGuard:
             )
             return self._parse_sdk_response(response, stage="egress")
         except Exception as err:
-            logger.error(f"Model Armor sanitize_model_response API error / outage: {err}")
-            return self._handle_outage(stage="egress", error=err, offline_fallback=offline_result)
+            return self._handle_outage(stage="egress", error=err, text=model_response_text)
 
     def _handle_outage(
-        self, stage: str, error: Exception, offline_fallback: ModelArmorResult
+        self, stage: str, error: Exception, text: str = ""
     ) -> ModelArmorResult:
         """Explicit Outage Policy: Decide whether to Fail-Open or Fail-Closed on API failure."""
-        err_msg = str(error)
-        # In local test environments without active GCP Model Armor API enablement, fall back safely
-        if "API has not been used" in err_msg or "disabled" in err_msg or "DefaultCredentialsError" in err_msg:
-            logger.debug(f"Model Armor GCP API unconfigured/disabled locally: falling back to offline validation.")
-            return offline_fallback
-
-        if self.fail_open:
-            logger.warning(
-                f"Model Armor API outage during {stage} screening: failing OPEN per configuration. Error: {error}"
-            )
-            return offline_fallback
+        if self.unavailable_policy == "fail_open":
+            if stage == "ingress":
+                return self._check_offline_ingress(text)
+            else:
+                return self._check_offline_egress(text)
 
         # Default Hard Security Policy: FAIL CLOSED (Block by default on API outage)
-        logger.error(
-            f"Model Armor API outage during {stage} screening: failing CLOSED (Blocking request by default). Error: {error}"
-        )
         return ModelArmorResult(
             is_blocked=True,
             matched_filter="MODEL_ARMOR_SERVICE_UNAVAILABLE",

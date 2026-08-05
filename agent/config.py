@@ -54,6 +54,14 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("MODEL_ARMOR_FAIL_OPEN", "false").lower() in ("true", "1", "yes"),
         description="Outage policy: True to allow requests if Model Armor API errors/times out, False to fail-closed (default: False)",
     )
+    model_armor_unavailable_policy: str = Field(
+        default_factory=lambda: os.getenv("MODEL_ARMOR_UNAVAILABLE_POLICY", "fail_closed").lower(),
+        description="Outage policy for Model Armor unavailability: 'fail_closed' (default, block by default) or 'fail_open' (allow request)",
+    )
+    model_armor_offline_mode: bool = Field(
+        default_factory=lambda: os.getenv("MODEL_ARMOR_OFFLINE_MODE", "false").lower() in ("true", "1", "yes"),
+        description="Enable offline pattern matching for local testing without querying live Model Armor API",
+    )
 
 
 settings = Settings()

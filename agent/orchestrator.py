@@ -42,10 +42,6 @@ def model_armor_before_model_callback(callback_context, llm_request: LlmRequest)
 
     res = model_armor_guard.sanitize_user_prompt(prompt_text)
     if res.is_blocked:
-        logger.warning(
-            f"[ModelArmorCallback] Short-circuiting execution at before_model_callback stage. "
-            f"Triggered category={res.matched_filter}"
-        )
         return LlmResponse(
             content=types.Content(
                 role="model",
@@ -72,10 +68,6 @@ def model_armor_after_model_callback(callback_context, llm_response: LlmResponse
 
     res = model_armor_guard.sanitize_model_response(response_text)
     if res.is_blocked:
-        logger.warning(
-            f"[ModelArmorCallback] Short-circuiting execution at after_model_callback stage. "
-            f"Triggered category={res.matched_filter}"
-        )
         return LlmResponse(
             content=types.Content(
                 role="model",
