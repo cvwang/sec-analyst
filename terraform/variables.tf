@@ -13,5 +13,6 @@ variable "region" {
 variable "service_name" {
   type        = string
   description = "Name of the Cloud Run agent service"
-  default     = "sec-edgar-analyst-agent"
+  default     = "sec-edgar-analyst"
 }
+

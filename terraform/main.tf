@@ -82,6 +82,37 @@ resource "google_secret_manager_secret_version" "api_key_secret_version" {
   secret_data = "PLACEHOLDER_KEY_CHANGE_IN_PROD"
 }
 
+# Service Account for SEC EDGAR Agent with Least-Privilege IAM Roles
+resource "google_service_account" "sec_analyst_sa" {
+  account_id   = "sec-analyst-sa"
+  display_name = "SEC EDGAR Natural Language Analyst Service Account"
+  project      = var.project_id
+}
+
+resource "google_project_iam_member" "sa_aiplatform" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.sec_analyst_sa.email}"
+}
+
+resource "google_project_iam_member" "sa_storage" {
+  project = var.project_id
+  role    = "roles/storage.objectUser"
+  member  = "serviceAccount:${google_service_account.sec_analyst_sa.email}"
+}
+
+resource "google_project_iam_member" "sa_bigquery" {
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${google_service_account.sec_analyst_sa.email}"
+}
+
+resource "google_project_iam_member" "sa_secretmanager" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.sec_analyst_sa.email}"
+}
+
 # Cloud Run v2 Service for SEC EDGAR Agent Backend
 resource "google_cloud_run_v2_service" "agent_service" {
   name     = var.service_name
@@ -90,6 +121,8 @@ resource "google_cloud_run_v2_service" "agent_service" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
+    service_account = google_service_account.sec_analyst_sa.email
+
     containers {
       image = "us-docker.pkg.dev/cloudrun/container/hello"
 
@@ -100,6 +133,18 @@ resource "google_cloud_run_v2_service" "agent_service" {
       env {
         name  = "GCP_REGION"
         value = var.region
+      }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+      env {
+        name  = "GOOGLE_CLOUD_LOCATION"
+        value = var.region
+      }
+      env {
+        name  = "GOOGLE_GENAI_USE_VERTEXAI"
+        value = "true"
       }
       env {
         name  = "REASONING_MODEL"
@@ -117,12 +162,43 @@ resource "google_cloud_run_v2_service" "agent_service" {
         name  = "MODEL_ARMOR_TEMPLATE_ID"
         value = "sec-analyst-model-armor-template"
       }
+      env {
+        name  = "MODEL_ARMOR_LOCATION"
+        value = var.region
+      }
+      env {
+        name  = "MODEL_ARMOR_FAIL_OPEN"
+        value = "true"
+      }
+      env {
+        name  = "MODEL_ARMOR_UNAVAILABLE_POLICY"
+        value = "fail_open"
+      }
+
 
       resources {
         limits = {
           cpu    = "2"
           memory = "2Gi"
         }
+      }
+
+      startup_probe {
+        http_get {
+          path = "/api/v1/health"
+          port = 8080
+        }
+        initial_delay_seconds = 5
+        period_seconds        = 10
+        failure_threshold     = 3
+      }
+
+      liveness_probe {
+        http_get {
+          path = "/api/v1/health"
+          port = 8080
+        }
+        period_seconds = 15
       }
     }
 
@@ -135,5 +211,16 @@ resource "google_cloud_run_v2_service" "agent_service" {
   depends_on = [
     google_project_service.cloudrun_api,
     google_project_service.modelarmor_api,
+    google_service_account.sec_analyst_sa,
   ]
 }
+
+# Allow unauthenticated invocation for backend API (or restrict via IAP)
+resource "google_cloud_run_v2_service_iam_member" "noauth" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.agent_service.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+

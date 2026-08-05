@@ -1,4 +1,9 @@
+google-adk
 google-genai
+google-cloud-storage
+google-cloud-discoveryengine
+google-cloud-bigquery
+google-cloud-modelarmor
 fastapi
 uvicorn
 pydantic
@@ -6,6 +11,4 @@ anyio
 opentelemetry-api
 opentelemetry-sdk
 python-json-logger
-google-cloud-bigquery
-google-cloud-modelarmor
 pytest

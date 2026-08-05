@@ -212,10 +212,12 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
                             final_text = part.text
             return final_text
 
+        runner_error = None
         try:
             narrative = _exec_async(_run_runner).strip()
         except Exception as err:
-            log_tool_execution("adk_runner_execution", "outcome", {"error": str(err)}, status="ERROR")
+            runner_error = str(err)
+            log_tool_execution("adk_runner_execution", "outcome", {"error": runner_error}, status="ERROR")
             narrative = ""
 
         # Intercept Model Armor hard-fail block responses
@@ -252,12 +254,14 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
         log_tool_execution("adk_runner_execution", "outcome", {"model": self.reasoning_model, "status": "SUCCESS"})
 
         if not narrative:
+            err_detail = runner_error or "Google ADK Runner model execution returned an empty response."
             return {
                 "is_success": False,
-                "error": "Google ADK Runner model execution failed. Please verify GCP ADC authentication (`gcloud auth application-default login`).",
-                "narrative": "⚠️ Unable to generate dynamic LLM response. Please run `gcloud auth application-default login` to re-authenticate with Google Cloud.",
-                "model_used": "failed-auth",
+                "error": err_detail,
+                "narrative": f"⚠️ ADK Execution Error: {err_detail}",
+                "model_used": "execution-error",
             }
+
 
         return {
             "is_success": True,

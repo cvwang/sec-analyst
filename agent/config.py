@@ -65,3 +65,9 @@ class Settings(BaseModel):
 
 
 settings = Settings()
+
+# Ensure Google GenAI / ADK environment variables are populated at module load time
+os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
+os.environ.setdefault("GOOGLE_CLOUD_PROJECT", settings.gcp_project_id)
+os.environ.setdefault("GOOGLE_CLOUD_LOCATION", settings.gcp_region)
+
