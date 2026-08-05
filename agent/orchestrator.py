@@ -1,6 +1,8 @@
 """ADK Root Orchestrator and Financial Analyst Agent supervising financial variance, peer comparison, and thematic tracking."""
 
 import os
+import time
+import uuid
 import asyncio
 import concurrent.futures
 import logging
@@ -19,9 +21,13 @@ from agent.subagents.search_subagent import search_tool
 from agent.memory.session_store import PersistentSessionStore
 from agent.observability.logging_config import log_tool_execution
 from agent.observability.tracer import trace_span
+from agent.observability.cost_tracker import CostTracker
+from agent.observability.telemetry_sink import BigQueryTelemetrySink, TelemetryEvent
 from agent.guardrails.model_armor import model_armor_guard
 
 logger = logging.getLogger(__name__)
+telemetry_sink = BigQueryTelemetrySink()
+
 
 
 def model_armor_before_model_callback(callback_context, llm_request: LlmRequest) -> Optional[LlmResponse]:
@@ -181,8 +187,10 @@ class FinancialAnalystAgent:
         self,
         user_prompt: str,
         context_summary: str = "",
+        session_id: str = "default_session",
     ) -> Dict[str, Any]:
         """Synthesizes grounded financial narrative using Google ADK Runner and LlmAgent by dynamically calling tools."""
+        start_time = time.perf_counter()
         history_context = f"\nCOMPACTED HISTORY CONTEXT:\n{context_summary}\n" if context_summary else ""
         user_q_str = f"USER PROMPT: {user_prompt}" if user_prompt else "USER REQUEST: Analyze financial filing data."
 
@@ -220,6 +228,22 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
             log_tool_execution("adk_runner_execution", "outcome", {"error": runner_error}, status="ERROR")
             narrative = ""
 
+        latency_ms = (time.perf_counter() - start_time) * 1000.0
+
+        # Estimate token usage and calculate costs
+        input_tokens = int(len(prompt.split()) * 1.3)
+        output_tokens = int(len(narrative.split()) * 1.3)
+        cached_tokens = int(len(SYSTEM_CONSTITUTION.split()) * 1.3) if history_context else 0
+
+        cost = CostTracker.calculate_cost(
+            model_name=self.reasoning_model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+        )
+
+        trace_id = f"trace-{uuid.uuid4().hex[:12]}"
+
         # Intercept Model Armor hard-fail block responses
         if "[MODEL_ARMOR_BLOCK:" in narrative:
             stage = "ingress" if "STAGE=INGRESS" in narrative else "egress"
@@ -240,6 +264,24 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
                 {"model_armor_blocked": True, "stage": stage, "category": category},
                 status="BLOCKED",
             )
+
+            telemetry_sink.log_event(
+                TelemetryEvent(
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    event_type="query_execution",
+                    model_name=self.reasoning_model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cached_tokens=cached_tokens,
+                    latency_ms=latency_ms,
+                    estimated_cost_usd=cost.total_cost_usd,
+                    cached_savings_usd=cost.cached_savings_usd,
+                    status="BLOCKED",
+                    error=f"MODEL_ARMOR_BLOCK:{stage}:{category}",
+                )
+            )
+
             return {
                 "is_success": False,
                 "is_model_armor_blocked": True,
@@ -248,6 +290,12 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
                 "narrative": clean_narrative,
                 "error": "MODEL_ARMOR_BLOCK",
                 "model_used": "Model Armor Guardrail",
+                "telemetry": {
+                    "trace_id": trace_id,
+                    "latency_ms": latency_ms,
+                    "cost_usd": cost.total_cost_usd,
+                    "cached_savings_usd": cost.cached_savings_usd,
+                },
             }
 
         model_used = f"Vertex AI ({self.reasoning_model} + ADK Search Sub-Agent & Tools)"
@@ -255,19 +303,67 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
 
         if not narrative:
             err_detail = runner_error or "Google ADK Runner model execution returned an empty response."
+
+            telemetry_sink.log_event(
+                TelemetryEvent(
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    event_type="query_execution",
+                    model_name=self.reasoning_model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cached_tokens=cached_tokens,
+                    latency_ms=latency_ms,
+                    estimated_cost_usd=cost.total_cost_usd,
+                    cached_savings_usd=cost.cached_savings_usd,
+                    status="ERROR",
+                    error=err_detail,
+                )
+            )
+
             return {
                 "is_success": False,
                 "error": err_detail,
                 "narrative": f"⚠️ ADK Execution Error: {err_detail}",
                 "model_used": "execution-error",
+                "telemetry": {
+                    "trace_id": trace_id,
+                    "latency_ms": latency_ms,
+                    "cost_usd": cost.total_cost_usd,
+                },
             }
 
+        telemetry_sink.log_event(
+            TelemetryEvent(
+                trace_id=trace_id,
+                session_id=session_id,
+                event_type="query_execution",
+                model_name=self.reasoning_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                latency_ms=latency_ms,
+                estimated_cost_usd=cost.total_cost_usd,
+                cached_savings_usd=cost.cached_savings_usd,
+                status="SUCCESS",
+            )
+        )
 
         return {
             "is_success": True,
             "narrative": narrative,
             "model_used": model_used,
+            "telemetry": {
+                "trace_id": trace_id,
+                "latency_ms": latency_ms,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cached_tokens": cached_tokens,
+                "cost_usd": cost.total_cost_usd,
+                "cached_savings_usd": cost.cached_savings_usd,
+            },
         }
+
 
 
 class RootOrchestrator:
@@ -306,6 +402,7 @@ class RootOrchestrator:
             analysis_res = self.analyst_agent.run_analysis(
                 user_prompt=prompt,
                 context_summary=history_summary,
+                session_id=session_id,
             )
 
             export_status_dict = None

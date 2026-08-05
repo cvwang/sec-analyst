@@ -14,3 +14,8 @@ Never insert silent default fallbacks, synthetic text fallbacks, or dummy values
 
 3. **Strict Grounding Enforcement**:
    - All financial claims, variance narratives, and qualitative explanations must be strictly grounded in authoritative data sources (BigQuery metrics and Vertex AI Search filing chunks).
+
+4. **No Silent Pricing or Catalog Guesses**:
+   - Do NOT insert silent default pricing rates or arbitrary baseline cost estimates when an entity (e.g., model name, SKU, or service tier) is unrecognized.
+   - Flag unknown entities explicitly (`is_pricing_known = False`, `cost = 0.0`) and log an explicit warning/alert rather than masking them with silent rate guesses.
+

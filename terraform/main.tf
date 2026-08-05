@@ -107,6 +107,13 @@ resource "google_project_iam_member" "sa_bigquery" {
   member  = "serviceAccount:${google_service_account.sec_analyst_sa.email}"
 }
 
+resource "google_project_iam_member" "sa_bigquery_editor" {
+  project = var.project_id
+  role    = "roles/bigquery.dataEditor"
+  member  = "serviceAccount:${google_service_account.sec_analyst_sa.email}"
+}
+
+
 resource "google_project_iam_member" "sa_secretmanager" {
   project = var.project_id
   role    = "roles/secretmanager.secretAccessor"
@@ -223,4 +230,43 @@ resource "google_cloud_run_v2_service_iam_member" "noauth" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# BigQuery Telemetry Sink Dataset & Table
+resource "google_bigquery_dataset" "telemetry" {
+  dataset_id                 = "sec_edgar_telemetry"
+  friendly_name              = "SEC EDGAR Agent Telemetry Dataset"
+  description                = "Telemetry sink for LLM token usage, cost tracking, and operational metrics."
+  location                   = var.region
+  project                    = var.project_id
+  delete_contents_on_destroy = false
+}
+
+resource "google_bigquery_table" "telemetry_events" {
+  dataset_id  = google_bigquery_dataset.telemetry.dataset_id
+  table_id    = "telemetry_events"
+  project     = var.project_id
+  description = "Agent execution telemetry and cost tracking events."
+
+  schema = <<EOF
+[
+  {"name": "trace_id", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "session_id", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
+  {"name": "event_type", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "model_name", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "input_tokens", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "output_tokens", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "cached_tokens", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "latency_ms", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "ttft_ms", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "estimated_cost_usd", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "cached_savings_usd", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "tool_calls_count", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "status", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "error", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "metadata", "type": "JSON", "mode": "NULLABLE"}
+]
+EOF
+}
+
 

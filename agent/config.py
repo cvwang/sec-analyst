@@ -62,6 +62,19 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("MODEL_ARMOR_OFFLINE_MODE", "false").lower() in ("true", "1", "yes"),
         description="Enable offline pattern matching for local testing without querying live Model Armor API",
     )
+    telemetry_enabled: bool = Field(
+        default_factory=lambda: os.getenv("TELEMETRY_ENABLED", "true").lower() in ("true", "1", "yes"),
+        description="Toggle telemetry metric streaming and cost tracking",
+    )
+    bigquery_telemetry_dataset: str = Field(
+        default_factory=lambda: os.getenv("BIGQUERY_TELEMETRY_DATASET", "sec_edgar_telemetry"),
+        description="BigQuery dataset name for telemetry sink events",
+    )
+    bigquery_telemetry_table: str = Field(
+        default_factory=lambda: os.getenv("BIGQUERY_TELEMETRY_TABLE", "telemetry_events"),
+        description="BigQuery table name for telemetry sink events",
+    )
+
 
 
 settings = Settings()
