@@ -1,5 +1,5 @@
-import React from 'react';
-import { Database, FileText, ExternalLink, BookmarkCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { Database, FileText, ExternalLink, BookmarkCheck, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { AnalysisResponse } from '../types';
 
 interface SourceDrawerProps {
@@ -7,9 +7,41 @@ interface SourceDrawerProps {
 }
 
 export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse }) => {
+  const [expandedChunks, setExpandedChunks] = useState<Record<number, boolean>>({});
+
   const citations = lastResponse?.citations || [];
   const textChunks = lastResponse?.hybrid_search_result?.text_chunks || [];
   const derivedTicker = lastResponse?.ticker || (lastResponse?.tickers && lastResponse.tickers.length > 0 ? lastResponse.tickers[0] : 'SEC');
+
+  const toggleExpand = (idx: number) => {
+    setExpandedChunks((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
+  const renderHighlightedText = (text: string) => {
+    if (!text) return null;
+
+    // Safely parse LLM-annotated <mark>...</mark> sentence blocks
+    const parts = text.split(/(<mark>.*?<\/mark>)/gs);
+
+    return (
+      <span>
+        {parts.map((part, i) => {
+          if (part.startsWith('<mark>') && part.endsWith('</mark>')) {
+            const innerText = part.substring(6, part.length - 7);
+            return (
+              <mark
+                key={i}
+                className="bg-amber-400/25 text-amber-200 px-1 py-0.5 rounded border border-amber-400/40 font-semibold inline-block my-0.5"
+              >
+                {innerText}
+              </mark>
+            );
+          }
+          return part;
+        })}
+      </span>
+    );
+  };
 
   return (
     <aside className="w-full h-full glass-panel border-l border-slate-800 flex flex-col shrink-0 overflow-hidden">
@@ -19,39 +51,66 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse }) => {
           <h2 className="font-heading font-semibold text-sm text-slate-200">Grounded Context Drawer</h2>
         </div>
         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-          {citations.length} Sources Grounded
+          {textChunks.length} {textChunks.length === 1 ? 'Source Cited' : 'Sources Cited'}
         </span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {textChunks.length > 0 ? (
-          textChunks.map((chunk, idx) => (
-            <div
-              key={idx}
-              className={`p-3.5 rounded-xl transition-all duration-200 ${
-                idx === 0
-                  ? 'bg-slate-800/90 border border-blue-500/40 shadow-md shadow-blue-500/10'
-                  : 'bg-slate-900/60 border border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-xs text-white flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-blue-400" />
-                  {chunk.company_name} FY{chunk.fiscal_year} 10-K
-                </span>
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                  {chunk.section}
-                </span>
+          textChunks.map((chunk, idx) => {
+            const isExpanded = !!expandedChunks[idx];
+            const textToDisplay = isExpanded ? chunk.content : (chunk.highlight_excerpt || chunk.content);
+
+            return (
+              <div
+                key={idx}
+                className={`p-3.5 rounded-xl transition-all duration-200 ${
+                  idx === 0
+                    ? 'bg-slate-800/90 border border-blue-500/40 shadow-md shadow-blue-500/10'
+                    : 'bg-slate-900/60 border border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-semibold text-xs text-white flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-blue-400" />
+                    {chunk.company_name} FY{chunk.fiscal_year} 10-K
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5" /> Cited
+                    </span>
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                      {chunk.section}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-3 rounded-lg border border-slate-800/80 mb-2">
+                  <div className="text-[10px] font-semibold text-amber-300/90 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>{isExpanded ? 'Full Document Context' : 'Relevant Grounded Excerpt'}</span>
+                    <button
+                      onClick={() => toggleExpand(idx)}
+                      className="text-blue-400 hover:text-blue-300 flex items-center gap-0.5 text-[10px] normal-case"
+                    >
+                      {isExpanded ? (
+                        <>Show Excerpt <ChevronUp className="w-3 h-3" /></>
+                      ) : (
+                        <>Show Full Text <ChevronDown className="w-3 h-3" /></>
+                      )}
+                    </button>
+                  </div>
+                  <div className="italic whitespace-pre-line leading-relaxed text-slate-300">
+                    "{renderHighlightedText(textToDisplay)}"
+                  </div>
+                </div>
+
+                <div className="text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                  <span className="truncate pr-2">Citation: {chunk.citation}</span>
+                  <ExternalLink className="w-3 h-3 text-slate-500 shrink-0" />
+                </div>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed italic bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/80 mb-2">
-                "{chunk.content}"
-              </p>
-              <div className="text-[10px] font-mono text-slate-400 flex items-center justify-between">
-                <span>Citation: {chunk.citation}</span>
-                <ExternalLink className="w-3 h-3 text-slate-500" />
-              </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
             <div className="flex items-center justify-between">

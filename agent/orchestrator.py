@@ -18,7 +18,7 @@ from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
 from agent.tools.calculation_engine import calculate_financial_variance_tool
 from agent.rag.bigquery_store import query_bigquery_financial_metrics_tool
-from agent.rag.sec_corpus import reset_grounded_chunks, get_grounded_chunks
+from agent.rag.sec_corpus import reset_grounded_chunks, get_grounded_chunks, annotate_grounded_highlights_with_llm
 from agent.subagents.search_subagent import search_tool
 from agent.memory.session_store import PersistentSessionStore
 from agent.observability.logging_config import log_tool_execution
@@ -240,22 +240,55 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
 
         # Retrieve grounded RAG chunks collected during execution
         raw_chunks = get_grounded_chunks()
-        seen_ids = set()
+        seen_gcs = set()
         unique_chunks = []
         for chunk in raw_chunks:
-            cid = chunk.get("chunk_id") or chunk.get("gcs_uri") or chunk.get("content")
-            if cid not in seen_ids:
-                seen_ids.add(cid)
+            g_uri = chunk.get("gcs_uri") or chunk.get("citation") or chunk.get("chunk_id")
+            if g_uri not in seen_gcs:
+                seen_gcs.add(g_uri)
                 unique_chunks.append(chunk)
 
-        citations = [c["citation"] for c in unique_chunks if c.get("citation")]
+        # Extract cited GCS URIs or filenames directly from the model narrative
+        cited_gcs_uris = set(re.findall(r'gs://[^\s\)\>\]\*\,\"\']+', narrative))
+        cited_filenames = set(re.findall(r'\b[A-Z0-9]+_\d{4}_Item[0-9A-Z_]+(?:\.md)?\b', narrative))
 
-        # Extract tickers & fiscal years dynamically from pulled RAG chunks, tool outputs, and narrative citations
+        # Filter chunks to ONLY those explicitly cited/referenced by the agent model response
+        cited_chunks = []
+        seen_cited_gcs = set()
+        if cited_gcs_uris or cited_filenames:
+            for chunk in unique_chunks:
+                g_uri = chunk.get("gcs_uri", "")
+                filename = os.path.basename(g_uri)
+                if g_uri in cited_gcs_uris or filename in cited_filenames or any(fn in g_uri for fn in cited_filenames):
+                    if g_uri not in seen_cited_gcs:
+                        seen_cited_gcs.add(g_uri)
+                        cited_chunks.append(chunk)
+
+        # Fallback: If model narrative did not print explicit gs:// links, filter candidate hits by prompt ticker & requested year(s)
+        if not cited_chunks and unique_chunks:
+            prompt_years = [int(y) for y in re.findall(r'\b(202[0-9])\b', user_prompt)]
+            prompt_tickers = [c.get("ticker") for c in unique_chunks if c.get("ticker") and c.get("ticker") in user_prompt.upper()]
+            
+            for chunk in unique_chunks:
+                g_uri = chunk.get("gcs_uri", "")
+                match_yr = not prompt_years or (chunk.get("fiscal_year") in prompt_years)
+                match_tk = not prompt_tickers or (chunk.get("ticker") in prompt_tickers)
+                if match_yr and match_tk and g_uri not in seen_cited_gcs:
+                    seen_cited_gcs.add(g_uri)
+                    cited_chunks.append(chunk)
+
+        grounded_chunks = cited_chunks if cited_chunks else unique_chunks
+        if narrative and grounded_chunks:
+            grounded_chunks = annotate_grounded_highlights_with_llm(grounded_chunks, narrative)
+
+        citations = [c["citation"] for c in grounded_chunks if c.get("citation")]
+
+        # Extract tickers & fiscal years dynamically from grounded RAG chunks, tool outputs, and narrative citations
         tickers = []
         years = []
 
-        # 1. From pulled RAG chunks
-        for c in unique_chunks:
+        # 1. From grounded RAG chunks
+        for c in grounded_chunks:
             tk = c.get("ticker")
             if tk and tk != "SEC" and tk not in tickers:
                 tickers.append(tk)
@@ -270,7 +303,7 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
                 tickers.append(tk)
 
         # 3. From GCS URIs cited in narrative
-        for gcs_uri in re.findall(r'gs://[^\s\)\>\]\*\,\"]+', narrative):
+        for gcs_uri in cited_gcs_uris:
             m = re.search(r'/([A-Z0-9]+)_(\d{4})_', gcs_uri)
             if m:
                 tk, yr = m.group(1), int(m.group(2))
@@ -284,8 +317,8 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
             years = [2023]
 
         # Determine query_type dynamically based on retrieved artifacts and tools executed
-        if unique_chunks:
-            is_risk = any("Item 1A" in c.get("section", "") for c in unique_chunks)
+        if grounded_chunks:
+            is_risk = any("Item 1A" in c.get("section", "") for c in grounded_chunks)
             query_type = "peer_comparison" if len(tickers) > 1 else ("thematic_tracking" if is_risk else "financial_summary")
         elif captured_tool_result:
             query_type = "variance_analysis"
@@ -293,7 +326,7 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
             query_type = "financial_summary"
 
         hybrid_search_result = {
-            "text_chunks": unique_chunks,
+            "text_chunks": grounded_chunks,
             "grounded_citations": citations,
             "query_type": query_type,
         }

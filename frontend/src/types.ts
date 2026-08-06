@@ -1,9 +1,11 @@
 export interface TextChunk {
   content: string;
+  highlight_excerpt?: string;
   company_name: string;
   fiscal_year: number;
   section: string;
   citation: string;
+  gcs_uri?: string;
 }
 
 export interface HybridSearchResult {
