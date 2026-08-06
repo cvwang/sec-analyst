@@ -48,3 +48,198 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(59, 130, 246, 0.4);
 }
+
+/* Enhanced Markdown Typography Styles */
+.markdown-content p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+
+.markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  font-family: 'Outfit', sans-serif;
+  color: #60a5fa;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.markdown-content h1 {
+  font-size: 1.25rem;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+  padding-bottom: 0.35rem;
+}
+
+.markdown-content h2 {
+  font-size: 1.1rem;
+}
+
+.markdown-content h3 {
+  font-size: 0.98rem;
+  color: #93c5fd;
+}
+
+.markdown-content h4 {
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+.markdown-content strong,
+.markdown-content b {
+  color: #f1f5f9;
+  font-weight: 600;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.4rem;
+}
+
+.markdown-content ul {
+  list-style-type: disc;
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+}
+
+.markdown-content li {
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+  line-height: 1.65;
+  color: #e2e8f0;
+}
+
+.markdown-content li::marker {
+  color: #60a5fa;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 0.85rem;
+  margin-bottom: 1rem;
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.markdown-content th {
+  background-color: rgba(30, 41, 59, 0.9);
+  color: #93c5fd;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.8);
+}
+
+.markdown-content td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+  color: #cbd5e1;
+  font-size: 0.85rem;
+}
+
+.markdown-content tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown-content tr:nth-child(even) {
+  background-color: rgba(15, 23, 42, 0.4);
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid #3b82f6;
+  background: rgba(30, 41, 59, 0.5);
+  padding: 8px 12px;
+  border-radius: 0 8px 8px 0;
+  margin: 0.75rem 0;
+  font-style: italic;
+  color: #94a3b8;
+}
+
+.markdown-content code {
+  background: rgba(15, 23, 42, 0.8);
+  color: #38bdf8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.8em;
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.markdown-content pre {
+  background: #020617;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
+.markdown-content hr {
+  border: 0;
+  height: 1px;
+  background: rgba(51, 65, 85, 0.6);
+  margin: 1.25rem 0;
+}
+
+/* Source Citation Badge Formatting */
+.source-citation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(30, 41, 59, 0.8);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  font-size: 11px;
+  font-family: 'Fira Code', monospace;
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  word-break: break-all;
+  transition: all 0.15s ease-in-out;
+}
+
+.source-citation-badge:hover {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(96, 165, 250, 0.6);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+.source-card-highlight {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.55), inset 0 0 12px rgba(59, 130, 246, 0.2) !important;
+  background-color: rgba(30, 58, 138, 0.4) !important;
+  transform: scale(1.02);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+

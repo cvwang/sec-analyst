@@ -35,3 +35,26 @@ export interface ChatMessage {
   timestamp: string;
   data?: AnalysisResponse;
 }
+
+export interface SessionSummary {
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  turn_count: number;
+  last_preview: string;
+}
+
+export interface SessionTurnRaw {
+  turn_id: number;
+  user_query: string;
+  agent_response: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SessionDetail {
+  metadata: SessionSummary;
+  turns: SessionTurnRaw[];
+  last_response?: AnalysisResponse | null;
+}
+

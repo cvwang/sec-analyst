@@ -1,17 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Database, FileText, ExternalLink, BookmarkCheck, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { AnalysisResponse } from '../types';
 
 interface SourceDrawerProps {
   lastResponse: AnalysisResponse | null;
+  activeSourceQuery?: string | null;
 }
 
-export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse }) => {
+export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse, activeSourceQuery }) => {
   const [expandedChunks, setExpandedChunks] = useState<Record<number, boolean>>({});
+  const [highlightedIdx, setHighlightedIdx] = useState<number | null>(null);
+  const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const citations = lastResponse?.citations || [];
   const textChunks = lastResponse?.hybrid_search_result?.text_chunks || [];
   const derivedTicker = lastResponse?.ticker || (lastResponse?.tickers && lastResponse.tickers.length > 0 ? lastResponse.tickers[0] : 'SEC');
+
+  // Auto-scroll and highlight when a source citation badge is clicked in chat narrative
+  useEffect(() => {
+    if (!activeSourceQuery || textChunks.length === 0) return;
+
+    const query = activeSourceQuery.toLowerCase();
+    let matchIdx = textChunks.findIndex((chunk) => {
+      if (chunk.gcs_uri && query.includes(chunk.gcs_uri.toLowerCase())) return true;
+      if (chunk.citation && query.includes(chunk.citation.toLowerCase())) return true;
+      if (chunk.company_name && query.includes(chunk.company_name.toLowerCase()) &&
+          chunk.fiscal_year && query.includes(String(chunk.fiscal_year))) return true;
+      return false;
+    });
+
+    if (matchIdx === -1) {
+      matchIdx = textChunks.findIndex((chunk) =>
+        chunk.company_name && query.includes(chunk.company_name.toLowerCase())
+      );
+    }
+
+    if (matchIdx !== -1) {
+      setExpandedChunks((prev) => ({ ...prev, [matchIdx]: true }));
+      setHighlightedIdx(matchIdx);
+
+      const el = cardRefs.current[matchIdx];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      const timer = setTimeout(() => {
+        setHighlightedIdx(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeSourceQuery, textChunks]);
 
   const toggleExpand = (idx: number) => {
     setExpandedChunks((prev) => ({ ...prev, [idx]: !prev[idx] }));
@@ -59,13 +97,17 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse }) => {
         {textChunks.length > 0 ? (
           textChunks.map((chunk, idx) => {
             const isExpanded = !!expandedChunks[idx];
+            const isHighlighted = highlightedIdx === idx;
             const textToDisplay = isExpanded ? chunk.content : (chunk.highlight_excerpt || chunk.content);
 
             return (
               <div
                 key={idx}
-                className={`p-3.5 rounded-xl transition-all duration-200 ${
-                  idx === 0
+                ref={(el) => (cardRefs.current[idx] = el)}
+                className={`p-3.5 rounded-xl transition-all duration-300 ${
+                  isHighlighted
+                    ? 'source-card-highlight'
+                    : idx === 0
                     ? 'bg-slate-800/90 border border-blue-500/40 shadow-md shadow-blue-500/10'
                     : 'bg-slate-900/60 border border-slate-800 hover:border-slate-700'
                 }`}

@@ -538,12 +538,14 @@ class RootOrchestrator:
                 export_status_dict = export_res.model_dump()
 
             if analysis_res.get("is_success"):
-                # 3. Save turn to persistent session store
+                # 3. Save turn to persistent session store with full response payload metadata
                 self.session_store.save_session_turn(
                     session_id=session_id,
                     user_query=prompt,
                     agent_response=analysis_res.get("narrative", ""),
+                    metadata={"last_response": analysis_res},
                 )
+                self.session_store.save_last_response(session_id, analysis_res)
 
             analysis_res["export_status"] = export_status_dict
             return analysis_res

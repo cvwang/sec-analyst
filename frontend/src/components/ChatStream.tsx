@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Bot, User, Send, Loader2 } from 'lucide-react';
 import { marked } from 'marked';
-import { ChatMessage } from '../types';
+import { AnalysisResponse, ChatMessage } from '../types';
 
 interface ChatStreamProps {
   messages: ChatMessage[];
@@ -10,6 +10,73 @@ interface ChatStreamProps {
   setInputPrompt: (val: string) => void;
   onSendMessage: () => void;
   onChipClick: (prompt: string) => void;
+  onSelectMessageResponse?: (data: AnalysisResponse) => void;
+  onSelectSourceQuery?: (query: string) => void;
+}
+
+// Configure marked parser for GitHub Flavored Markdown with automatic line breaks
+marked.use({
+  gfm: true,
+  breaks: true,
+});
+
+function formatSourceBadgeHtml(rawText: string): string {
+  const gsMatch = rawText.match(/gs:\/\/[^\s\n\)\<\>"]+/i);
+  const gcsUri = gsMatch ? gsMatch[0].replace(/[\)\.,;]+$/, '') : '';
+  const filename = gcsUri ? gcsUri.split('/').pop() || '' : '';
+  const fullText = `${filename} ${rawText}`;
+
+  // Extract Ticker (e.g. AAPL, TSLA, META, NVDA, MSFT)
+  let ticker = '';
+  const tickerMatch = fullText.match(/\b(AAPL|TSLA|META|NVDA|MSFT|GOOGL|AMZN)\b/i);
+  if (tickerMatch) {
+    ticker = tickerMatch[0].toUpperCase();
+  }
+
+  // Extract Fiscal Year (e.g. 2022, 2023, 2024)
+  let year = '';
+  const yearMatch = fullText.match(/\b(202[0-9])\b/);
+  if (yearMatch) {
+    year = yearMatch[0];
+  }
+
+  // Extract SEC Section
+  let section = '';
+  if (/Item\s*7|Item7|MDA/i.test(fullText)) {
+    section = 'Item 7 MD&A';
+  } else if (/Item\s*1A|Item1A|Risk/i.test(fullText)) {
+    section = 'Item 1A Risk Factors';
+  } else if (/Item\s*1|Item1|Business/i.test(fullText)) {
+    section = 'Item 1 Business';
+  }
+
+  // Construct natural SEC filing display label without parentheses or raw file extensions
+  const labelParts: string[] = [];
+  if (ticker && year) {
+    labelParts.push(`${ticker} ${year} 10-K`);
+  } else if (ticker) {
+    labelParts.push(`${ticker} 10-K`);
+  } else {
+    // Fallback title from raw text without URI/Source prefix
+    const titleClean = rawText
+      .replace(gcsUri, '')
+      .replace(/^source:\s*/i, '')
+      .replace(/[\(\)]/g, '')
+      .replace(/^[\s,:\(\[\)]+|[\s,:\(\[\)]+$/g, '')
+      .trim();
+    if (titleClean) {
+      labelParts.push(titleClean);
+    }
+  }
+
+  if (section && !labelParts.join(' ').includes(section)) {
+    labelParts.push(section);
+  }
+
+  const labelText = labelParts.length > 0 ? labelParts.join(' • ') : 'SEC 10-K Filing';
+  const queryAttr = (gcsUri || rawText).replace(/"/g, '&quot;');
+
+  return `<button data-source-query="${queryAttr}" class="source-citation-badge hover:scale-105 active:scale-95 cursor-pointer" title="Click to highlight grounded SEC source section">📌 ${labelText}</button>`;
 }
 
 export const ChatStream: React.FC<ChatStreamProps> = ({
@@ -19,6 +86,8 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
   setInputPrompt,
   onSendMessage,
   onChipClick,
+  onSelectMessageResponse,
+  onSelectSourceQuery,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -39,9 +108,33 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
     }
   };
 
+  const handleChatContainerClick = (e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest('.source-citation-badge') as HTMLElement;
+    if (target) {
+      e.stopPropagation();
+      const query = target.getAttribute('data-source-query') || target.innerText;
+      if (query) {
+        onSelectSourceQuery?.(query);
+      }
+    }
+  };
+
   const renderMarkdown = (content: string) => {
+    if (!content) return { __html: '' };
     try {
-      return { __html: marked.parse(content) as string };
+      // Single-pass replacement on raw content to prevent nested regex tag corruption
+      let formatted = content.replace(
+        /(\([\s\S]*?\)|\[[\s\S]*?\]|\bgs:\/\/[^\s\n\)\<\>"]+)/gi,
+        (match) => {
+          if (/\b(Source|gs:\/\/)\b/i.test(match)) {
+            let inner = match.replace(/^[\(\[]|[\)\]]$/g, '').trim();
+            return formatSourceBadgeHtml(inner);
+          }
+          return match;
+        }
+      );
+
+      return { __html: marked.parse(formatted) as string };
     } catch {
       return { __html: content };
     }
@@ -55,7 +148,7 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
   ];
 
   return (
-    <main className="flex-1 flex flex-col h-full bg-slate-950 min-w-0 overflow-hidden relative">
+    <main onClick={handleChatContainerClick} className="flex-1 flex flex-col h-full bg-slate-950 min-w-0 overflow-hidden relative">
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
         {messages.map((msg) => {
           const isAgent = msg.sender === 'agent';
@@ -79,9 +172,11 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
 
               {/* Message Bubble Container */}
               <div
+                onClick={() => isAgent && msg.data && onSelectMessageResponse?.(msg.data)}
+                title={isAgent && msg.data ? "Click to view grounded sources for this response" : undefined}
                 className={`rounded-2xl p-4 text-sm leading-relaxed shadow-lg ${
                   isAgent
-                    ? 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-sm'
+                    ? 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-sm transition-all hover:border-blue-500/40 cursor-pointer'
                     : 'bg-gradient-to-r from-blue-600 to-indigo-600 border border-blue-400/30 text-white rounded-tr-sm'
                 }`}
               >
@@ -107,10 +202,8 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
 
                 {/* Content */}
                 <div
-                  className={`prose prose-invert max-w-none text-sm space-y-2.5 ${
-                    isAgent
-                      ? 'text-slate-200 prose-p:leading-relaxed prose-headings:font-heading prose-headings:text-blue-400 prose-table:border prose-table:border-slate-800 prose-th:bg-slate-800/80 prose-th:text-blue-300 prose-td:border-b prose-td:border-slate-800/50'
-                      : 'text-white prose-p:leading-relaxed prose-headings:text-white prose-a:text-blue-200'
+                  className={`markdown-content max-w-none text-sm ${
+                    isAgent ? 'text-slate-200' : 'text-white'
                   }`}
                   dangerouslySetInnerHTML={renderMarkdown(msg.text)}
                 />

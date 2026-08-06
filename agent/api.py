@@ -53,6 +53,15 @@ class ExportApiRequest(BaseModel):
     human_approved: bool = False
 
 
+class CreateSessionRequest(BaseModel):
+    """Payload for creating a new conversation thread."""
+    title: Optional[str] = Field(None, description="Optional custom title for the conversation thread.")
+
+class UpdateSessionRequest(BaseModel):
+    """Payload for updating session metadata."""
+    title: str = Field(..., description="New title for the conversation thread.")
+
+
 @app.get("/api/v1/health")
 def health_check():
     """Health check and readiness probe endpoint."""
@@ -63,6 +72,56 @@ def health_check():
         "region": settings.gcp_region,
         "reasoning_model": settings.reasoning_model,
     }
+
+
+@app.get("/api/v1/sessions")
+def list_sessions():
+    """Lists all persistent conversation thread summaries."""
+    sessions = orchestrator.session_store.list_sessions()
+    return {"sessions": sessions}
+
+
+@app.post("/api/v1/sessions")
+def create_session(request: Optional[CreateSessionRequest] = None):
+    """Creates a new conversation thread."""
+    title = request.title if request else None
+    meta = orchestrator.session_store.create_session(title=title)
+    return meta
+
+
+@app.get("/api/v1/sessions/{session_id}")
+def get_session(session_id: str):
+    """Retrieves full details for a session thread including turns history and last response payload."""
+    session = orchestrator.session_store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
+    return session
+
+
+@app.patch("/api/v1/sessions/{session_id}")
+def update_session(session_id: str, request: UpdateSessionRequest):
+    """Updates custom display title for a conversation thread."""
+    meta = orchestrator.session_store.update_session_title(session_id, request.title)
+    if not meta:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
+    return meta
+
+
+@app.delete("/api/v1/sessions")
+def clear_all_sessions():
+    """Clears all persistent conversation session threads in memory and on disk."""
+    orchestrator.session_store.clear_all_sessions()
+    return {"status": "SUCCESS", "message": "All session history cleared."}
+
+
+@app.delete("/api/v1/sessions/{session_id}")
+def delete_session(session_id: str):
+    """Deletes a conversation session thread."""
+    success = orchestrator.session_store.delete_session(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
+    return {"status": "SUCCESS", "message": f"Session '{session_id}' deleted."}
+
 
 
 @app.post("/api/v1/analyze")
@@ -80,6 +139,9 @@ def analyze_financials(request: AnalysisApiRequest):
             session_id=request.session_id,
         )
 
+        # Save last response payload to restore split-pane source drawer on thread switch
+        orchestrator.session_store.save_last_response(request.session_id, response)
+
         log_tool_execution(
             tool_name="api_analyze_financials",
             stage="outcome",
@@ -91,6 +153,7 @@ def analyze_financials(request: AnalysisApiRequest):
     except Exception as e:
         log_tool_execution("api_analyze_financials", "outcome", {"error": str(e)}, status="ERROR")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.post("/api/v1/export")
