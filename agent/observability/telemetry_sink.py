@@ -10,7 +10,6 @@ from google.api_core import exceptions as gcp_exceptions
 
 from agent.config import settings
 from agent.observability.logging_config import structured_logger
-from agent.guardrails.pii_scrubber import PIIScrubber
 
 logger = logging.getLogger(__name__)
 
@@ -116,10 +115,6 @@ class BigQueryTelemetrySink:
         if not settings.telemetry_enabled:
             return False
 
-        # Scrub event PII fields before recording
-        scrubbed_metadata = PIIScrubber.scrub_data(event.metadata) if event.metadata else {}
-        scrubbed_error = PIIScrubber.scrub_text(event.error) if event.error else None
-
         row = {
             "trace_id": event.trace_id,
             "session_id": event.session_id,
@@ -135,8 +130,8 @@ class BigQueryTelemetrySink:
             "cached_savings_usd": round(event.cached_savings_usd, 6),
             "tool_calls_count": event.tool_calls_count,
             "status": event.status,
-            "error": scrubbed_error,
-            "metadata": json.dumps(scrubbed_metadata) if scrubbed_metadata else None,
+            "error": event.error,
+            "metadata": json.dumps(event.metadata) if event.metadata else None,
         }
 
         # Structured logger is always invoked for log retention

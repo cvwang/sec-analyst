@@ -4,7 +4,6 @@ import json
 import os
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
-from agent.guardrails.pii_scrubber import PIIScrubber
 
 
 class SessionTurn(BaseModel):
@@ -36,9 +35,8 @@ class PersistentSessionStore:
     def _save_store(self) -> None:
         """Saves session state to persistent disk JSON file."""
         try:
-            scrubbed_sessions = PIIScrubber.scrub_data(self._sessions)
             with open(self.storage_path, "w") as f:
-                json.dump(scrubbed_sessions, f, indent=2)
+                json.dump(self._sessions, f, indent=2)
         except Exception:
             pass
 

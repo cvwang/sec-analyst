@@ -12,6 +12,23 @@ from agent.rag.vertex_search import VertexAISearchClient
 
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "sec-analyst-sec-reports")
 
+_request_grounded_chunks: List[dict] = []
+
+
+def reset_grounded_chunks():
+    global _request_grounded_chunks
+    _request_grounded_chunks = []
+
+
+def get_grounded_chunks() -> List[dict]:
+    global _request_grounded_chunks
+    return list(_request_grounded_chunks)
+
+
+def add_grounded_chunks(chunks: List[dict]):
+    global _request_grounded_chunks
+    _request_grounded_chunks.extend(chunks)
+
 
 def formulate_vertex_search_query(
     query: str = "",
@@ -88,13 +105,22 @@ class SECCorpusStore:
         v_chunks = []
         target_years = requested_years if requested_years else ([fiscal_year] if fiscal_year else None)
         for vr in vertex_results:
+            uri_match = re.search(r'/([A-Z0-9]+)_(\d{4})_', vr.gcs_uri)
+            extracted_ticker = ticker or (uri_match.group(1) if uri_match else "SEC")
+            extracted_year = (target_years[0] if (target_years and len(target_years) > 0) else None) or (int(uri_match.group(2)) if uri_match else 2023)
+
+            is_risk = any(
+                k in (search_query + " " + vr.title + " " + vr.gcs_uri).lower()
+                for k in ["risk", "item 1a", "item1a"]
+            )
+            sec_section = "Item 1A - Risk Factors" if is_risk else "Item 7 - MD&A"
             v_chunks.append(
                 SECDocumentChunk(
                     chunk_id=vr.id,
-                    ticker=ticker or "SEC",
-                    company_name=f"{ticker or 'SEC'} Corp",
-                    fiscal_year=target_years[0] if (target_years and len(target_years) > 0) else 2023,
-                    section="Item 7 - MD&A",
+                    ticker=extracted_ticker,
+                    company_name=f"{extracted_ticker} Corp",
+                    fiscal_year=extracted_year,
+                    section=sec_section,
                     content=vr.snippet,
                     citation=f"Vertex AI Search ({self.vertex_search.datastore_id}) [{vr.gcs_uri}]",
                     gcs_uri=vr.gcs_uri,
@@ -122,4 +148,6 @@ def search_sec_filing_chunks_tool(
         ticker=ticker or None,
         requested_years=requested_years or None,
     )
-    return [c.model_dump() for c in chunks]
+    dumped = [c.model_dump() for c in chunks]
+    add_grounded_chunks(dumped)
+    return dumped

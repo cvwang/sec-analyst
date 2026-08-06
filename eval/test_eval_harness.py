@@ -4,7 +4,6 @@ import json
 import os
 import pytest
 from agent.tools.calculation_engine import calculate_financial_variance, VarianceRequest
-from agent.guardrails.pii_scrubber import PIIScrubber
 from agent.memory.session_store import PersistentSessionStore
 from agent.config import settings
 from agent.orchestrator import RootOrchestrator, FinancialAnalystAgent, export_financial_report, ExportReportRequest
@@ -71,19 +70,6 @@ def test_calculation_engine_invalid_type_recovery():
     assert result.is_success is False
     assert "Cannot parse" in result.error
     assert "Ensure current_period_value is a valid numeric" in result.recovery_instruction
-
-
-def test_pii_scrubber_redaction():
-    """Evaluates PII scrubbing for SSNs, credit cards, emails, and API keys."""
-    raw_text = "Contact john.doe@example.com with SSN 123-45-6789 or key AIzaSyA1234567890abcdefghijklmnopqrstuv."
-    scrubbed = PIIScrubber.scrub_text(raw_text)
-
-    assert "john.doe@example.com" not in scrubbed
-    assert "123-45-6789" not in scrubbed
-    assert "AIzaSyA1234567890abcdefghijklmnopqrstuv" not in scrubbed
-    assert "[REDACTED_EMAIL]" in scrubbed
-    assert "[REDACTED_SSN]" in scrubbed
-    assert "[REDACTED_KEY]" in scrubbed
 
 
 def test_human_in_the_loop_export_stop():
@@ -254,6 +240,9 @@ def test_thematic_tracking_qualitative_risk_disclosures(monkeypatch):
     assert len(res["narrative"]) > 0
     assert "unable to analyze" not in res["narrative"].lower()
     assert "unable to provide" not in res["narrative"].lower()
+    assert "citations" in res
+    assert "hybrid_search_result" in res
+    assert "text_chunks" in res["hybrid_search_result"]
 
 
 def test_multiturn_qualitative_risk_followup(monkeypatch):

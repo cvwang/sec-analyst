@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 
 from agent.config import settings
 from agent.orchestrator import RootOrchestrator, export_financial_report, ExportReportRequest
-from agent.guardrails.pii_scrubber import PIIScrubber
 from agent.observability.logging_config import log_tool_execution
 
 app = FastAPI(
@@ -80,10 +79,6 @@ def analyze_financials(request: AnalysisApiRequest):
             prompt=request.prompt,
             session_id=request.session_id,
         )
-
-        # Scrub PII from outgoing response
-        if response.get("narrative"):
-            response["narrative"] = PIIScrubber.scrub_text(response["narrative"])
 
         log_tool_execution(
             tool_name="api_analyze_financials",

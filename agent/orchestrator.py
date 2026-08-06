@@ -1,6 +1,7 @@
 """ADK Root Orchestrator and Financial Analyst Agent supervising financial variance, peer comparison, and thematic tracking."""
 
 import os
+import re
 import time
 import uuid
 import asyncio
@@ -17,6 +18,7 @@ from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
 from agent.tools.calculation_engine import calculate_financial_variance_tool
 from agent.rag.bigquery_store import query_bigquery_financial_metrics_tool
+from agent.rag.sec_corpus import reset_grounded_chunks, get_grounded_chunks
 from agent.subagents.search_subagent import search_tool
 from agent.memory.session_store import PersistentSessionStore
 from agent.observability.logging_config import log_tool_execution
@@ -205,6 +207,7 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
 
         log_tool_execution("adk_runner_execution", "intent", {"model": self.reasoning_model, "prompt": user_prompt})
 
+        reset_grounded_chunks()
         captured_tool_result = None
         async def _run_runner():
             nonlocal captured_tool_result
@@ -234,6 +237,66 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
             runner_error = str(err)
             log_tool_execution("adk_runner_execution", "outcome", {"error": runner_error}, status="ERROR")
             narrative = ""
+
+        # Retrieve grounded RAG chunks collected during execution
+        raw_chunks = get_grounded_chunks()
+        seen_ids = set()
+        unique_chunks = []
+        for chunk in raw_chunks:
+            cid = chunk.get("chunk_id") or chunk.get("gcs_uri") or chunk.get("content")
+            if cid not in seen_ids:
+                seen_ids.add(cid)
+                unique_chunks.append(chunk)
+
+        citations = [c["citation"] for c in unique_chunks if c.get("citation")]
+
+        # Extract tickers & fiscal years dynamically from pulled RAG chunks, tool outputs, and narrative citations
+        tickers = []
+        years = []
+
+        # 1. From pulled RAG chunks
+        for c in unique_chunks:
+            tk = c.get("ticker")
+            if tk and tk != "SEC" and tk not in tickers:
+                tickers.append(tk)
+            fy = c.get("fiscal_year")
+            if fy and fy not in years:
+                years.append(fy)
+
+        # 2. From structured calculation / metric tool output
+        if isinstance(captured_tool_result, dict):
+            tk = captured_tool_result.get("ticker")
+            if tk and tk != "SEC" and tk not in tickers:
+                tickers.append(tk)
+
+        # 3. From GCS URIs cited in narrative
+        for gcs_uri in re.findall(r'gs://[^\s\)\>\]\*\,\"]+', narrative):
+            m = re.search(r'/([A-Z0-9]+)_(\d{4})_', gcs_uri)
+            if m:
+                tk, yr = m.group(1), int(m.group(2))
+                if tk != "SEC" and tk not in tickers:
+                    tickers.append(tk)
+                if yr not in years:
+                    years.append(yr)
+
+        primary_ticker = tickers[0] if tickers else "SEC"
+        if not years:
+            years = [2023]
+
+        # Determine query_type dynamically based on retrieved artifacts and tools executed
+        if unique_chunks:
+            is_risk = any("Item 1A" in c.get("section", "") for c in unique_chunks)
+            query_type = "peer_comparison" if len(tickers) > 1 else ("thematic_tracking" if is_risk else "financial_summary")
+        elif captured_tool_result:
+            query_type = "variance_analysis"
+        else:
+            query_type = "financial_summary"
+
+        hybrid_search_result = {
+            "text_chunks": unique_chunks,
+            "grounded_citations": citations,
+            "query_type": query_type,
+        }
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
 
@@ -297,6 +360,12 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
                 "narrative": clean_narrative,
                 "error": "MODEL_ARMOR_BLOCK",
                 "model_used": "Model Armor Guardrail",
+                "ticker": primary_ticker,
+                "tickers": tickers,
+                "requested_years": years,
+                "query_type": query_type,
+                "citations": citations,
+                "hybrid_search_result": hybrid_search_result,
                 "telemetry": {
                     "trace_id": trace_id,
                     "latency_ms": latency_ms,
@@ -333,6 +402,12 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
                 "error": err_detail,
                 "narrative": f"⚠️ ADK Execution Error: {err_detail}",
                 "model_used": "execution-error",
+                "ticker": primary_ticker,
+                "tickers": tickers,
+                "requested_years": years,
+                "query_type": query_type,
+                "citations": citations,
+                "hybrid_search_result": hybrid_search_result,
                 "telemetry": {
                     "trace_id": trace_id,
                     "latency_ms": latency_ms,
@@ -360,6 +435,12 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
             "is_success": True,
             "narrative": narrative,
             "model_used": model_used,
+            "ticker": primary_ticker,
+            "tickers": tickers,
+            "requested_years": years,
+            "query_type": query_type,
+            "citations": citations,
+            "hybrid_search_result": hybrid_search_result,
             "tool_result": captured_tool_result,
             "telemetry": {
                 "trace_id": trace_id,

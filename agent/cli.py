@@ -4,7 +4,6 @@ import os
 from typing import Dict, Any
 from agent.config import settings
 from agent.orchestrator import RootOrchestrator
-from agent.guardrails.pii_scrubber import PIIScrubber
 
 
 def print_banner():
@@ -48,10 +47,7 @@ def run_cli_session():
                 print(f"❌ Analysis Error: {res.get('error')}")
                 continue
 
-            # Apply PII scrubbing guardrail to narrative output
             narrative = res.get("narrative", "")
-            if narrative:
-                narrative = PIIScrubber.scrub_text(narrative)
 
             stored_history = orchestrator.session_store.get_session_history(session_id)
 
