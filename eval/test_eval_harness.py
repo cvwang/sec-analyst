@@ -17,7 +17,11 @@ def load_golden_dataset():
         return json.load(f)
 
 
-@pytest.mark.parametrize("case", load_golden_dataset())
+def load_quantitative_golden_dataset():
+    return [c for c in load_golden_dataset() if c.get("category") == "quantitative_variance"]
+
+
+@pytest.mark.parametrize("case", load_quantitative_golden_dataset())
 def test_calculation_engine_golden_accuracy(case):
     """Evaluates 100% numerical accuracy for deterministic variance calculations against golden dataset."""
     request = VarianceRequest(
@@ -34,6 +38,7 @@ def test_calculation_engine_golden_accuracy(case):
     assert result.absolute_change == case["expected_absolute_change"]
     assert result.percentage_change == case["expected_percentage_change"]
     assert result.direction == case["expected_direction"]
+
 
 
 def test_calculation_engine_zero_prior_period():

@@ -205,7 +205,9 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
 
         log_tool_execution("adk_runner_execution", "intent", {"model": self.reasoning_model, "prompt": user_prompt})
 
+        captured_tool_result = None
         async def _run_runner():
+            nonlocal captured_tool_result
             session = await self.session_service.create_session(
                 app_name="sec_analyst", user_id="analyst_user"
             )
@@ -218,6 +220,11 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
                     for part in event.content.parts:
                         if part.text:
                             final_text = part.text
+                        fn_resp = getattr(part, "function_response", None)
+                        if fn_resp and getattr(fn_resp, "name", None) == "calculate_financial_variance_tool":
+                            resp_dict = getattr(fn_resp, "response", {})
+                            if isinstance(resp_dict, dict):
+                                captured_tool_result = resp_dict.get("result", resp_dict)
             return final_text
 
         runner_error = None
@@ -353,6 +360,7 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
             "is_success": True,
             "narrative": narrative,
             "model_used": model_used,
+            "tool_result": captured_tool_result,
             "telemetry": {
                 "trace_id": trace_id,
                 "latency_ms": latency_ms,

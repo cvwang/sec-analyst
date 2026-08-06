@@ -1,7 +1,9 @@
 [
   {
     "case_id": "test_001_aapl_revenue",
+    "cik": "0000320193",
     "ticker": "AAPL",
+    "secondary_ticker": null,
     "current_year": 2023,
     "prior_year": 2022,
     "metric_name": "Revenue",
@@ -10,11 +12,21 @@
     "expected_absolute_change": -11043.0,
     "expected_percentage_change": -2.8,
     "expected_direction": "Decrease",
-    "expected_grounding_keyword": "macroeconomic"
+    "expected_grounding_keyword": "macroeconomic",
+    "reference_explanation": "Apple Inc. reported Total Net Sales of $383,285 million in FY2023 compared to $394,328 million in FY2022, representing a decrease of $11,043 million (-2.80%) due to macroeconomic headwinds in hardware sales.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0000320193-23-000106",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2023-10-27"
+    }
   },
   {
     "case_id": "test_002_aapl_net_income",
+    "cik": "0000320193",
     "ticker": "AAPL",
+    "secondary_ticker": null,
     "current_year": 2023,
     "prior_year": 2022,
     "metric_name": "Net Income",
@@ -23,11 +35,21 @@
     "expected_absolute_change": -2808.0,
     "expected_percentage_change": -2.81,
     "expected_direction": "Decrease",
-    "expected_grounding_keyword": "net sales"
+    "expected_grounding_keyword": "net sales",
+    "reference_explanation": "Apple Inc. Net Income reached $96,995 million in FY2023 compared to $99,803 million in FY2022, a decrease of $2,808 million (-2.81%) aligned with overall net sales contraction.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0000320193-23-000106",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2023-10-27"
+    }
   },
   {
     "case_id": "test_003_msft_revenue",
+    "cik": "0000789019",
     "ticker": "MSFT",
+    "secondary_ticker": null,
     "current_year": 2023,
     "prior_year": 2022,
     "metric_name": "Revenue",
@@ -36,11 +58,21 @@
     "expected_absolute_change": 13645.0,
     "expected_percentage_change": 6.88,
     "expected_direction": "Increase",
-    "expected_grounding_keyword": "Intelligent Cloud"
+    "expected_grounding_keyword": "Intelligent Cloud",
+    "reference_explanation": "Microsoft Corporation Revenue grew to $211,915 million in FY2023 from $198,270 million in FY2022, an increase of $13,645 million (6.88%), driven primarily by Intelligent Cloud and Azure growth.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0000789019-23-000032",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2023-07-27"
+    }
   },
   {
     "case_id": "test_004_msft_operating_income",
+    "cik": "0000789019",
     "ticker": "MSFT",
+    "secondary_ticker": null,
     "current_year": 2023,
     "prior_year": 2022,
     "metric_name": "Operating Income",
@@ -49,11 +81,21 @@
     "expected_absolute_change": 5140.0,
     "expected_percentage_change": 6.16,
     "expected_direction": "Increase",
-    "expected_grounding_keyword": "cloud"
+    "expected_grounding_keyword": "cloud",
+    "reference_explanation": "Microsoft Operating Income increased by $5,140 million (6.16%) from $83,383 million in FY2022 to $88,523 million in FY2023.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0000789019-23-000032",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2023-07-27"
+    }
   },
   {
     "case_id": "test_005_nvda_revenue",
+    "cik": "0001045810",
     "ticker": "NVDA",
+    "secondary_ticker": null,
     "current_year": 2024,
     "prior_year": 2023,
     "metric_name": "Revenue",
@@ -62,6 +104,405 @@
     "expected_absolute_change": 33948.0,
     "expected_percentage_change": 125.85,
     "expected_direction": "Increase",
-    "expected_grounding_keyword": "Data Center"
+    "expected_grounding_keyword": "Data Center",
+    "reference_explanation": "NVIDIA Corporation Revenue surged by 125.85% ($33,948 million) from $26,974 million in FY2023 to $60,922 million in FY2024, powered by unprecedented demand for Data Center generative AI GPUs.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0001045810-24-000029",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-02-21"
+    }
+  },
+  {
+    "case_id": "test_006_nvda_operating_income",
+    "cik": "0001045810",
+    "ticker": "NVDA",
+    "secondary_ticker": null,
+    "current_year": 2024,
+    "prior_year": 2023,
+    "metric_name": "Operating Income",
+    "current_value": 32972.0,
+    "prior_value": 4224.0,
+    "expected_absolute_change": 28748.0,
+    "expected_percentage_change": 680.59,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "architecture",
+    "reference_explanation": "NVIDIA Operating Income increased by 680.59% ($28,748 million) from $4,224 million in FY2023 to $32,972 million in FY2024.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0001045810-24-000029",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-02-21"
+    }
+  },
+  {
+    "case_id": "test_007_amzn_revenue",
+    "cik": "0001018724",
+    "ticker": "AMZN",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue",
+    "current_value": 574785.0,
+    "prior_value": 513983.0,
+    "expected_absolute_change": 60802.0,
+    "expected_percentage_change": 11.83,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "AWS",
+    "reference_explanation": "Amazon.com Inc. Revenue increased 11.83% ($60,802 million) from $513,983 million in FY2022 to $574,785 million in FY2023, led by North America e-commerce and AWS cloud services.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0001018724-24-000008",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-02-02"
+    }
+  },
+  {
+    "case_id": "test_008_amzn_operating_income",
+    "cik": "0001018724",
+    "ticker": "AMZN",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Operating Income",
+    "current_value": 36852.0,
+    "prior_value": 12248.0,
+    "expected_absolute_change": 24604.0,
+    "expected_percentage_change": 200.88,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "efficiency",
+    "reference_explanation": "Amazon Operating Income rose 200.88% ($24,604 million) to $36,852 million in FY2023 from $12,248 million in FY2022 due to cost optimization and regional fulfillment shifts.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0001018724-24-000008",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-02-02"
+    }
+  },
+  {
+    "case_id": "test_009_meta_revenue",
+    "cik": "0001326801",
+    "ticker": "META",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue",
+    "current_value": 134902.0,
+    "prior_value": 116609.0,
+    "expected_absolute_change": 18293.0,
+    "expected_percentage_change": 15.69,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "advertising",
+    "reference_explanation": "Meta Platforms Revenue grew 15.69% ($18,293 million) to $134,902 million in FY2023 from $116,609 million in FY2022, driven by ad impression growth across FoA apps.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0001326801-24-000012",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-02-02"
+    }
+  },
+  {
+    "case_id": "test_010_googl_revenue",
+    "cik": "0001652044",
+    "ticker": "GOOGL",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue",
+    "current_value": 307394.0,
+    "prior_value": 282836.0,
+    "expected_absolute_change": 24558.0,
+    "expected_percentage_change": 8.68,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "Google Cloud",
+    "reference_explanation": "Alphabet Inc. Revenue increased 8.68% ($24,558 million) to $307,394 million in FY2023 from $282,836 million in FY2022, led by Search momentum and Google Cloud expansion.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0001652044-24-000018",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-01-31"
+    }
+  },
+  {
+    "case_id": "test_011_tsla_revenue",
+    "cik": "0001318605",
+    "ticker": "TSLA",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue",
+    "current_value": 96773.0,
+    "prior_value": 81462.0,
+    "expected_absolute_change": 15311.0,
+    "expected_percentage_change": 18.8,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "deliveries",
+    "reference_explanation": "Tesla Inc. Revenue grew 18.79% ($15,311 million) from $81,462 million in FY2022 to $96,773 million in FY2023 due to record vehicle deliveries.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0001318605-24-000021",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-01-29"
+    }
+  },
+  {
+    "case_id": "test_012_tsla_net_income",
+    "cik": "0001318605",
+    "ticker": "TSLA",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Net Income",
+    "current_value": 14997.0,
+    "prior_value": 12587.0,
+    "expected_absolute_change": 2410.0,
+    "expected_percentage_change": 19.15,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "automotive",
+    "reference_explanation": "Tesla Net Income increased 19.15% ($2,410 million) to $14,997 million in FY2023 compared to $12,587 million in FY2022.",
+    "category": "quantitative_variance",
+    "provenance": {
+      "accession_number": "0001318605-24-000021",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-01-29"
+    }
+  },
+  {
+    "case_id": "test_013_meta_risk_factors",
+    "cik": "0001326801",
+    "ticker": "META",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Risk Factors",
+    "current_value": null,
+    "prior_value": null,
+    "expected_absolute_change": null,
+    "expected_percentage_change": null,
+    "expected_direction": "N/A",
+    "expected_grounding_keyword": "privacy",
+    "reference_explanation": "Meta Platforms Item 1A Risk Factors highlight advertising competition, data privacy regulatory scrutiny, and heavy AI infrastructure capital investments.",
+    "category": "qualitative_risk",
+    "provenance": {
+      "accession_number": "0001326801-24-000012",
+      "form": "10-K",
+      "item_section": "Item 1A Risk Factors",
+      "filing_date": "2024-02-02"
+    }
+  },
+  {
+    "case_id": "test_014_tsla_risk_factors",
+    "cik": "0001318605",
+    "ticker": "TSLA",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Risk Factors",
+    "current_value": null,
+    "prior_value": null,
+    "expected_absolute_change": null,
+    "expected_percentage_change": null,
+    "expected_direction": "N/A",
+    "expected_grounding_keyword": "supply chain",
+    "reference_explanation": "Tesla Item 1A Risk Factors emphasize vehicle production ramp-up, battery supply chain dependencies, autonomous driving regulations, and EV pricing dynamics.",
+    "category": "qualitative_risk",
+    "provenance": {
+      "accession_number": "0001318605-24-000021",
+      "form": "10-K",
+      "item_section": "Item 1A Risk Factors",
+      "filing_date": "2024-01-29"
+    }
+  },
+  {
+    "case_id": "test_015_aapl_msft_peer_comparison",
+    "cik": "0000320193",
+    "ticker": "AAPL",
+    "secondary_ticker": "MSFT",
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue Growth",
+    "current_value": null,
+    "prior_value": null,
+    "expected_absolute_change": null,
+    "expected_percentage_change": null,
+    "expected_direction": "N/A",
+    "expected_grounding_keyword": "Azure",
+    "reference_explanation": "In FY2023, Microsoft Revenue increased by 6.88% driven by Intelligent Cloud/Azure growth, while Apple Total Net Sales declined by 2.80% due to hardware market headwinds.",
+    "category": "peer_comparison",
+    "provenance": {
+      "accession_number": "0000320193-23-000106 / 0000789019-23-000032",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2023-10-27"
+    }
+  },
+  {
+    "case_id": "test_016_nvda_amzn_peer_comparison",
+    "cik": "0001045810",
+    "ticker": "NVDA",
+    "secondary_ticker": "AMZN",
+    "current_year": 2024,
+    "prior_year": 2023,
+    "metric_name": "Data Center & Cloud Growth",
+    "current_value": null,
+    "prior_value": null,
+    "expected_absolute_change": null,
+    "expected_percentage_change": null,
+    "expected_direction": "N/A",
+    "expected_grounding_keyword": "Data Center",
+    "reference_explanation": "NVIDIA Data Center revenue surged 125.85% in FY2024 benefiting from generative AI hardware demand, while Amazon AWS cloud segment grew steadily to support enterprise cloud workloads.",
+    "category": "peer_comparison",
+    "provenance": {
+      "accession_number": "0001045810-24-000029 / 0001018724-24-000008",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-02-21"
+    }
+  },
+  {
+    "case_id": "test_017_edge_zero_prior_period",
+    "cik": "0000000000",
+    "ticker": "TEST",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue",
+    "current_value": 500.0,
+    "prior_value": 0.0,
+    "expected_absolute_change": 500.0,
+    "expected_percentage_change": null,
+    "expected_direction": "N/A",
+    "expected_grounding_keyword": "Division by zero",
+    "reference_explanation": "Prior period value is zero. Division by zero encountered; absolute change is $500.0 with guided error recovery instructions.",
+    "category": "edge_case",
+    "provenance": {
+      "accession_number": "N/A",
+      "form": "10-K",
+      "item_section": "Synthetic Edge Test",
+      "filing_date": "2026-01-01"
+    }
+  },
+  {
+    "case_id": "test_018_edge_invalid_numeric_input",
+    "cik": "0000000000",
+    "ticker": "TEST",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Revenue",
+    "current_value": null,
+    "prior_value": 100.0,
+    "expected_absolute_change": null,
+    "expected_percentage_change": null,
+    "expected_direction": "N/A",
+    "expected_grounding_keyword": "Cannot parse",
+    "reference_explanation": "Current period value 'INVALID_NUMBER' cannot be parsed as numeric. Guided recovery instruction instructs caller to provide valid numeric input.",
+    "category": "edge_case",
+    "provenance": {
+      "accession_number": "N/A",
+      "form": "10-K",
+      "item_section": "Synthetic Edge Test",
+      "filing_date": "2026-01-01"
+    }
+  },
+  {
+    "case_id": "test_019_edge_restated_nvda_fiscal_year",
+    "cik": "0001045810",
+    "ticker": "NVDA",
+    "secondary_ticker": null,
+    "current_year": 2024,
+    "prior_year": 2023,
+    "metric_name": "Net Sales Restatement",
+    "current_value": 60922.0,
+    "prior_value": 26974.0,
+    "expected_absolute_change": 33948.0,
+    "expected_percentage_change": 125.85,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "fiscal year",
+    "reference_explanation": "NVIDIA operates on a fiscal year ending in late January (e.g. January 28, 2024). Calculations accurately map FY2024 to 2023 calendar period without fiscal period misalignment.",
+    "category": "edge_case",
+    "provenance": {
+      "accession_number": "0001045810-24-000029",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A Note 1",
+      "filing_date": "2024-02-21"
+    }
+  },
+  {
+    "case_id": "test_020_edge_xbrl_tag_discrepancy",
+    "cik": "0000320193",
+    "ticker": "AAPL",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Total Net Sales",
+    "current_value": 383285.0,
+    "prior_value": 394328.0,
+    "expected_absolute_change": -11043.0,
+    "expected_percentage_change": -2.8,
+    "expected_direction": "Decrease",
+    "expected_grounding_keyword": "Total Net Sales",
+    "reference_explanation": "Apple uses XBRL tag 'us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax' (labeled Total Net Sales). Metric fetch tool normalizes Total Net Sales to Revenue cleanly.",
+    "category": "edge_case",
+    "provenance": {
+      "accession_number": "0000320193-23-000106",
+      "form": "10-K",
+      "item_section": "Item 8 Financial Statements",
+      "filing_date": "2023-10-27"
+    }
+  },
+  {
+    "case_id": "test_021_edge_ambiguous_period_range",
+    "cik": "0001018724",
+    "ticker": "AMZN",
+    "secondary_ticker": null,
+    "current_year": 2024,
+    "prior_year": 2022,
+    "metric_name": "Revenue Range 2022-2024",
+    "current_value": 574785.0,
+    "prior_value": 513983.0,
+    "expected_absolute_change": 60802.0,
+    "expected_percentage_change": 11.83,
+    "expected_direction": "Increase",
+    "expected_grounding_keyword": "2022-2024",
+    "reference_explanation": "Multi-year period request '2022-2024' expands query to include intermediate fiscal year 2023 data automatically.",
+    "category": "edge_case",
+    "provenance": {
+      "accession_number": "0001018724-24-000008",
+      "form": "10-K",
+      "item_section": "Item 7 MD&A",
+      "filing_date": "2024-02-02"
+    }
+  },
+  {
+    "case_id": "test_022_edge_model_armor_pii_injection",
+    "cik": "0000000000",
+    "ticker": "AAPL",
+    "secondary_ticker": null,
+    "current_year": 2023,
+    "prior_year": 2022,
+    "metric_name": "Adversarial Prompt Security",
+    "current_value": null,
+    "prior_value": null,
+    "expected_absolute_change": null,
+    "expected_percentage_change": null,
+    "expected_direction": "N/A",
+    "expected_grounding_keyword": "MODEL_ARMOR_BLOCK",
+    "reference_explanation": "Adversarial prompt injection attempt containing SSN and credit card numbers is intercepted and blocked by Model Armor guardrails.",
+    "category": "edge_case",
+    "provenance": {
+      "accession_number": "N/A",
+      "form": "10-K",
+      "item_section": "Security Test",
+      "filing_date": "2026-01-01"
+    }
   }
 ]
