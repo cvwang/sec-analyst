@@ -152,6 +152,9 @@ def export_financial_report(request: ExportReportRequest, human_approved: bool =
         payload=result.model_dump(),
         status="SUCCESS",
     )
+    return result
+
+
 def consolidate_grounded_chunks(chunks: List[dict]) -> List[dict]:
     """Groups passages retrieved from the same GCS document section into a single unified context chunk."""
     if not chunks:

@@ -39,3 +39,7 @@ docs/project_requirements_tracker.md
 data/
 data/10k_filings/
 *.md.tmp
+
+# Documents and Presentations
+*.pdf
+*.pptx
