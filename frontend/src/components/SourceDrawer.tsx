@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Database, FileText, ExternalLink, BookmarkCheck, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Database, FileText, ExternalLink, BookmarkCheck, CheckCircle2, ChevronDown, ChevronUp, PanelRightClose } from 'lucide-react';
 import { AnalysisResponse } from '../types';
 
 interface SourceDrawerProps {
   lastResponse: AnalysisResponse | null;
   activeSourceQuery?: string | null;
+  onToggleCollapse?: () => void;
 }
 
-export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse, activeSourceQuery }) => {
+export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse, activeSourceQuery, onToggleCollapse }) => {
   const [expandedChunks, setExpandedChunks] = useState<Record<number, boolean>>({});
   const [highlightedIdx, setHighlightedIdx] = useState<number | null>(null);
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -125,9 +126,20 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse, active
           <Database className="w-4 h-4 text-blue-400" />
           <h2 className="font-heading font-semibold text-sm text-slate-200">Grounded Context Drawer</h2>
         </div>
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-          {consolidatedChunks.length} {consolidatedChunks.length === 1 ? 'Source Cited' : 'Sources Cited'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            {consolidatedChunks.length} {consolidatedChunks.length === 1 ? 'Source Cited' : 'Sources Cited'}
+          </span>
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              title="Collapse Grounded Context Drawer"
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+            >
+              <PanelRightClose className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">

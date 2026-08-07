@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { SessionSummary } from '../types';
 
 interface SidebarProps {
@@ -12,6 +13,7 @@ interface SidebarProps {
   isOpen: boolean;
   onToggleOpen: () => void;
   runningSessionIds?: Record<string, boolean>;
+  width?: number;
 }
 
 export function Sidebar({
@@ -25,6 +27,7 @@ export function Sidebar({
   isOpen,
   onToggleOpen,
   runningSessionIds = {},
+  width = 280,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -79,23 +82,21 @@ export function Sidebar({
 
   if (!isOpen) {
     return (
-      <div className="h-full bg-slate-900 border-r border-slate-800/80 flex flex-col items-center py-4 px-2 space-y-4 select-none z-30">
+      <div className="h-full bg-slate-900/95 backdrop-blur-md border-r border-slate-800/80 flex flex-col items-center py-3.5 px-2 select-none z-30 transition-all duration-200 w-14 shrink-0">
         <button
           onClick={onToggleOpen}
           title="Expand sidebar"
-          className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition-colors cursor-pointer flex items-center justify-center mb-2"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-          </svg>
+          <PanelLeftOpen className="w-5 h-5 text-blue-400" />
         </button>
         <button
           onClick={onCreateNewSession}
           title="New Analysis"
-          className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-600/30 transition-all hover:scale-105"
+          className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-600/30 transition-all hover:scale-105 cursor-pointer"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
           </svg>
         </button>
       </div>
@@ -103,7 +104,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="w-72 h-full bg-slate-900/95 backdrop-blur-md border-r border-slate-800/80 flex flex-col min-w-[280px] max-w-[320px] select-none z-30 transition-all duration-200">
+    <aside style={{ width: `${width}px` }} className="h-full bg-slate-900/95 backdrop-blur-md border-r border-slate-800/80 flex flex-col shrink-0 select-none z-30 transition-all duration-75 relative">
       {/* Sidebar Header */}
       <div className="p-3.5 border-b border-slate-800/80 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -115,11 +116,9 @@ export function Sidebar({
         <button
           onClick={onToggleOpen}
           title="Collapse sidebar"
-          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition-colors"
+          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
+          <PanelLeftClose className="w-4 h-4" />
         </button>
       </div>
 

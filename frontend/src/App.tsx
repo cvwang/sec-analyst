@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { PanelRightOpen, Database } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ChatStream } from './components/ChatStream';
@@ -16,12 +17,18 @@ const WELCOME_MESSAGE: ChatMessage = {
 export function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>('');
+
+  // Sidebar Open & Width State
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(280);
+
+  // Source Drawer Open State
+  const [isSourceDrawerOpen, setIsSourceDrawerOpen] = useState<boolean>(true);
 
   // Per-session background execution tracking
   const [runningSessionIds, setRunningSessionIds] = useState<Record<string, boolean>>({});
 
-  // Optimistic pending user messages per session ID (preserves user query when switching active threads while running)
+  // Optimistic pending user messages per session ID
   const [pendingUserMessages, setPendingUserMessages] = useState<Record<string, ChatMessage[]>>({});
 
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
@@ -30,9 +37,9 @@ export function App() {
   const [activeSourceQuery, setActiveSourceQuery] = useState<string | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
-  // Draggable Split View State (leftWidth in percentage)
-  const [leftWidth, setLeftWidth] = useState<number>(60);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
+  // Split View Drag State (leftWidth in percentage for ChatStream when drawer is open)
+  const [leftWidth, setLeftWidth] = useState<number>(55);
+  const [activeDrag, setActiveDrag] = useState<'sidebar' | 'split' | null>(null);
 
   // Fetch list of all saved session threads
   const fetchSessions = useCallback(async (selectSessionId?: string) => {
@@ -194,28 +201,38 @@ export function App() {
     }
   };
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  // Resizer Mouse Handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent, type: 'sidebar' | 'split') => {
     e.preventDefault();
-    setIsDragging(true);
+    setActiveDrag(type);
   }, []);
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
-      if (!isDragging) return;
-      const newWidth = (e.clientX / window.innerWidth) * 100;
-      if (newWidth >= 25 && newWidth <= 75) {
-        setLeftWidth(newWidth);
+      if (!activeDrag) return;
+
+      if (activeDrag === 'sidebar') {
+        const newWidth = Math.max(180, Math.min(480, e.clientX));
+        setSidebarWidth(newWidth);
+      } else if (activeDrag === 'split') {
+        const currentSidebarWidth = isSidebarOpen ? sidebarWidth : 0;
+        const availableWidth = window.innerWidth - currentSidebarWidth;
+        const relativeX = e.clientX - currentSidebarWidth;
+        const newPct = (relativeX / availableWidth) * 100;
+        if (newPct >= 25 && newPct <= 75) {
+          setLeftWidth(newPct);
+        }
       }
     },
-    [isDragging]
+    [activeDrag, isSidebarOpen, sidebarWidth]
   );
 
   const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
+    setActiveDrag(null);
   }, []);
 
   useEffect(() => {
-    if (isDragging) {
+    if (activeDrag) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     } else {
@@ -226,7 +243,7 @@ export function App() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+  }, [activeDrag, handleMouseMove, handleMouseUp]);
 
   // Send message - supports concurrent background execution per session ID
   const handleSendMessage = async () => {
@@ -243,7 +260,6 @@ export function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Store user message in pending state map so switching threads retains the user's prompt
     setPendingUserMessages((prev) => ({
       ...prev,
       [targetSessionId]: [...(prev[targetSessionId] || []), userMsg],
@@ -272,13 +288,11 @@ export function App() {
         data,
       };
 
-      // Clear pending user message for target session now that response is ready
       setPendingUserMessages((prev) => ({
         ...prev,
         [targetSessionId]: [],
       }));
 
-      // If user is currently viewing this session, append agent response directly
       setActiveSessionId((currentActiveId) => {
         if (currentActiveId === targetSessionId) {
           setMessages((prev) => [...prev, agentMsg]);
@@ -287,7 +301,6 @@ export function App() {
         return currentActiveId;
       });
 
-      // Refresh sidebar list to update titles and turn counts
       fetchSessions();
     } catch (err: any) {
       const errorMsg: ChatMessage = {
@@ -316,13 +329,13 @@ export function App() {
   const isCurrentActiveSessionLoading = !!runningSessionIds[activeSessionId];
 
   return (
-    <div className={`h-screen w-screen flex flex-col bg-darkBg overflow-hidden ${isDragging ? 'select-none' : ''}`}>
+    <div className={`h-screen w-screen flex flex-col bg-darkBg overflow-hidden ${activeDrag ? 'select-none' : ''}`}>
       <Header
         onOpenExportModal={() => setIsExportModalOpen(true)}
         canExport={!!lastResponse?.is_success}
       />
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Collapsible Left Sidebar with Running status indicator */}
+        {/* Collapsible & Drag-Resizable Left Sidebar */}
         <Sidebar
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -334,43 +347,104 @@ export function App() {
           isOpen={isSidebarOpen}
           onToggleOpen={() => setIsSidebarOpen((prev) => !prev)}
           runningSessionIds={runningSessionIds}
+          width={sidebarWidth}
         />
 
-        {/* Left Pane: Chat Stream */}
-        <div style={{ width: `${leftWidth}%` }} className="h-full flex flex-col min-w-0 overflow-hidden">
-          <ChatStream
-            messages={messages}
-            isLoading={isCurrentActiveSessionLoading}
-            inputPrompt={inputPrompt}
-            setInputPrompt={setInputPrompt}
-            onSendMessage={handleSendMessage}
-            onChipClick={(chip) => setInputPrompt(chip)}
-            onSelectMessageResponse={(data) => setLastResponse(data)}
-            onSelectSourceQuery={(query) => setActiveSourceQuery(query)}
-          />
-        </div>
-
-        {/* Center Draggable Resizer Line */}
-        <div
-          onMouseDown={handleMouseDown}
-          className={`w-2.5 hover:w-2.5 z-20 cursor-col-resize flex items-center justify-center transition-colors duration-150 relative group ${
-            isDragging
-              ? 'bg-blue-600/80 shadow-[0_0_12px_rgba(59,130,246,0.6)]'
-              : 'bg-slate-900/90 hover:bg-blue-600/50 border-x border-slate-800/80'
-          }`}
-          title="Drag to resize split panes"
-        >
-          {/* Visual Grip Handle Indicator */}
+        {/* Sidebar Drag Resizer Line */}
+        {isSidebarOpen && (
           <div
-            className={`w-1 h-8 rounded-full transition-all duration-150 ${
-              isDragging ? 'bg-white shadow-glow' : 'bg-slate-600 group-hover:bg-blue-300'
+            onMouseDown={(e) => handleMouseDown(e, 'sidebar')}
+            className={`w-2.5 z-20 cursor-col-resize flex items-center justify-center transition-colors duration-150 relative group ${
+              activeDrag === 'sidebar'
+                ? 'bg-blue-600/80 shadow-[0_0_12px_rgba(59,130,246,0.6)]'
+                : 'bg-slate-900/90 hover:bg-blue-600/50 border-r border-slate-800/80'
             }`}
-          />
-        </div>
+            title="Drag to resize conversation sidebar width"
+          >
+            <div
+              className={`w-1 h-8 rounded-full transition-all duration-150 ${
+                activeDrag === 'sidebar' ? 'bg-white shadow-glow' : 'bg-slate-600 group-hover:bg-blue-300'
+              }`}
+            />
+          </div>
+        )}
 
-        {/* Right Pane: Source Drawer */}
-        <div style={{ width: `${100 - leftWidth}%` }} className="h-full flex flex-col min-w-0 overflow-hidden">
-          <SourceDrawer lastResponse={lastResponse} activeSourceQuery={activeSourceQuery} />
+        {/* Main Content Area (Chat Stream + optional Source Drawer) */}
+        <div className="flex-1 h-full flex min-w-0 overflow-hidden">
+          {/* Chat Stream Pane */}
+          <div
+            style={{ width: isSourceDrawerOpen ? `${leftWidth}%` : '100%' }}
+            className="h-full flex flex-col min-w-0 overflow-hidden transition-all duration-75"
+          >
+            <ChatStream
+              messages={messages}
+              isLoading={isCurrentActiveSessionLoading}
+              inputPrompt={inputPrompt}
+              setInputPrompt={setInputPrompt}
+              onSendMessage={handleSendMessage}
+              onChipClick={(chip) => setInputPrompt(chip)}
+              onSelectMessageResponse={(data) => setLastResponse(data)}
+              onSelectSourceQuery={(query) => {
+                setActiveSourceQuery(query);
+                if (!isSourceDrawerOpen) setIsSourceDrawerOpen(true);
+              }}
+            />
+          </div>
+
+          {/* Split Drag Resizer Line between ChatStream and SourceDrawer */}
+          {isSourceDrawerOpen && (
+            <div
+              onMouseDown={(e) => handleMouseDown(e, 'split')}
+              className={`w-2.5 z-20 cursor-col-resize flex items-center justify-center transition-colors duration-150 relative group ${
+                activeDrag === 'split'
+                  ? 'bg-blue-600/80 shadow-[0_0_12px_rgba(59,130,246,0.6)]'
+                  : 'bg-slate-900/90 hover:bg-blue-600/50 border-x border-slate-800/80'
+              }`}
+              title="Drag to resize split panes"
+            >
+              <div
+                className={`w-1 h-8 rounded-full transition-all duration-150 ${
+                  activeDrag === 'split' ? 'bg-white shadow-glow' : 'bg-slate-600 group-hover:bg-blue-300'
+                }`}
+              />
+            </div>
+          )}
+
+          {/* Right Pane: Collapsible & Draggable Grounded Context Drawer */}
+          {isSourceDrawerOpen ? (
+            <div
+              style={{ width: `${100 - leftWidth}%` }}
+              className="h-full flex flex-col min-w-0 overflow-hidden transition-all duration-75"
+            >
+              <SourceDrawer
+                lastResponse={lastResponse}
+                activeSourceQuery={activeSourceQuery}
+                onToggleCollapse={() => setIsSourceDrawerOpen(false)}
+              />
+            </div>
+          ) : (
+            <div className="h-full bg-slate-900/95 backdrop-blur-md border-l border-slate-800/80 flex flex-col items-center py-3.5 px-2 select-none z-30 transition-all duration-200 w-14 shrink-0 justify-between">
+              <div className="flex flex-col items-center gap-4">
+                <button
+                  onClick={() => setIsSourceDrawerOpen(true)}
+                  title="Expand Grounded Context Drawer"
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition-colors cursor-pointer flex items-center justify-center mb-2"
+                >
+                  <PanelRightOpen className="w-5 h-5 text-blue-400" />
+                </button>
+                <div
+                  onClick={() => setIsSourceDrawerOpen(true)}
+                  className="cursor-pointer p-2 rounded-lg hover:bg-slate-800/60 text-slate-400 hover:text-blue-300 flex flex-col items-center gap-2 transition-colors"
+                  title="Expand Grounded Context Drawer"
+                >
+                  <Database className="w-4 h-4 text-blue-400" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 [writing-mode:vertical-lr] rotate-180 mt-1">
+                    Grounded Context
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
