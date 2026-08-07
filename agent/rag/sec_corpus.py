@@ -279,7 +279,7 @@ class SECCorpusStore:
         for vr in vertex_results:
             uri_match = re.search(r'/([A-Z0-9]+)_(\d{4})_', vr.gcs_uri)
             extracted_ticker = ticker or (uri_match.group(1) if uri_match else "SEC")
-            extracted_year = (target_years[0] if (target_years and len(target_years) > 0) else None) or (int(uri_match.group(2)) if uri_match else 2023)
+            extracted_year = (int(uri_match.group(2)) if uri_match else None) or (target_years[0] if (target_years and len(target_years) > 0) else 2024)
 
             doc_meta_lower = (vr.gcs_uri + " " + vr.title).lower()
             if "item1a" in doc_meta_lower or "item 1a" in doc_meta_lower or "item1a_risk" in doc_meta_lower:

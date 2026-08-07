@@ -53,11 +53,10 @@ export function App() {
       if (list.length === 0) {
         // Create initial session if none exist
         await handleCreateNewSession();
-      } else {
-        const targetId = selectSessionId || activeSessionId || list[0].session_id;
-        if (targetId !== activeSessionId) {
-          setActiveSessionId(targetId);
-        }
+      } else if (selectSessionId && selectSessionId !== activeSessionId) {
+        setActiveSessionId(selectSessionId);
+      } else if (!activeSessionId && list.length > 0) {
+        setActiveSessionId(list[0].session_id);
       }
     } catch (err) {
       console.error('Failed to fetch sessions:', err);
@@ -76,21 +75,25 @@ export function App() {
       const loadedMsgs: ChatMessage[] = [];
 
       if (detail.turns && detail.turns.length > 0) {
-        detail.turns.forEach((turn) => {
+        detail.turns.forEach((turn, idx) => {
           const respData = turn.metadata?.last_response || turn.metadata?.response || undefined;
-          loadedMsgs.push({
-            id: `user_${turn.turn_id}`,
-            sender: 'user',
-            text: turn.user_query,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          });
-          loadedMsgs.push({
-            id: `agent_${turn.turn_id}`,
-            sender: 'agent',
-            text: turn.agent_response,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            data: respData,
-          });
+          if (turn.user_query && turn.user_query.trim()) {
+            loadedMsgs.push({
+              id: `${sessionId}_user_${turn.turn_id}_${idx}`,
+              sender: 'user',
+              text: turn.user_query.trim(),
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            });
+          }
+          if (turn.agent_response && turn.agent_response.trim()) {
+            loadedMsgs.push({
+              id: `${sessionId}_agent_${turn.turn_id}_${idx}`,
+              sender: 'agent',
+              text: turn.agent_response.trim(),
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              data: respData,
+            });
+          }
         });
 
         if (!effectiveLastResp) {
@@ -101,16 +104,13 @@ export function App() {
         }
       }
 
-      // Combine persistent backend turns with any pending optimistic user messages currently running in background
-      const pendingForSession = pendingUserMessages[sessionId] || [];
-      const combined = [WELCOME_MESSAGE, ...loadedMsgs, ...pendingForSession];
-
+      const combined = [WELCOME_MESSAGE, ...loadedMsgs];
       setMessages(combined);
       setLastResponse(effectiveLastResp);
     } catch (err) {
       console.error(`Failed to load session ${sessionId}:`, err);
     }
-  }, [pendingUserMessages]);
+  }, []);
 
   // Initial load
   useEffect(() => {

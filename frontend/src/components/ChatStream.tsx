@@ -2,6 +2,8 @@ import React, { useRef, useEffect } from 'react';
 import { Bot, User, Send, Loader2 } from 'lucide-react';
 import { marked } from 'marked';
 import { AnalysisResponse, ChatMessage } from '../types';
+import { A2UISurface } from './A2UI/A2UISurface';
+import { FinancialInlineTable } from './A2UI/FinancialInlineTable';
 
 interface ChatStreamProps {
   messages: ChatMessage[];
@@ -12,6 +14,71 @@ interface ChatStreamProps {
   onChipClick: (prompt: string) => void;
   onSelectMessageResponse?: (data: AnalysisResponse) => void;
   onSelectSourceQuery?: (query: string) => void;
+}
+
+interface MessageSegment {
+  type: 'markdown' | 'a2ui' | 'financial_table';
+  content: string;
+  ticker?: string;
+  startYear?: string;
+  endYear?: string;
+}
+
+function parseMessageSegments(text: string): MessageSegment[] {
+  if (!text) return [];
+
+  const segments: MessageSegment[] = [];
+  const regex = /(```a2ui[\s\S]*?```|<FinancialTable\s+ticker="[A-Z0-9\-\.]+"[\s\S]*?\/>)/gi;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({
+        type: 'markdown',
+        content: text.substring(lastIndex, match.index),
+      });
+    }
+
+    const block = match[0];
+    if (block.toLowerCase().startsWith('```a2ui')) {
+      const payload = block.replace(/^```a2ui\s*/i, '').replace(/\s*```$/, '').trim();
+      segments.push({
+        type: 'a2ui',
+        content: payload,
+      });
+    } else if (block.toLowerCase().startsWith('<financialtable')) {
+      const tMatch = block.match(/ticker="([^"]+)"/i);
+      const sMatch = block.match(/start_year="([^"]+)"/i);
+      const eMatch = block.match(/end_year="([^"]+)"/i);
+      if (tMatch && sMatch && eMatch) {
+        segments.push({
+          type: 'financial_table',
+          content: block,
+          ticker: tMatch[1],
+          startYear: sMatch[1],
+          endYear: eMatch[1],
+        });
+      } else {
+        segments.push({
+          type: 'markdown',
+          content: block,
+        });
+      }
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({
+      type: 'markdown',
+      content: text.substring(lastIndex),
+    });
+  }
+
+  return segments;
 }
 
 // Configure marked parser for GitHub Flavored Markdown with automatic line breaks
@@ -161,8 +228,19 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
   return (
     <main onClick={handleChatContainerClick} className="flex-1 flex flex-col h-full bg-slate-950 min-w-0 overflow-hidden relative">
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-        {messages.map((msg) => {
+        {messages
+          .filter((msg, idx, arr) => {
+            if (idx === 0) return true;
+            const prev = arr[idx - 1];
+            // Filter out duplicate consecutive messages with identical sender and text
+            if (msg.sender === prev.sender && msg.text === prev.text && msg.text.length > 20) {
+              return false;
+            }
+            return true;
+          })
+          .map((msg) => {
           const isAgent = msg.sender === 'agent';
+          const segments = parseMessageSegments(msg.text);
           return (
             <div
               key={msg.id}
@@ -212,16 +290,42 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
                 </div>
 
                 {/* Content */}
-                <div
-                  className={`markdown-content max-w-none text-sm ${
-                    isAgent ? 'text-slate-200' : 'text-white'
-                  }`}
-                  dangerouslySetInnerHTML={renderMarkdown(msg.text)}
-                />
+                <div className="space-y-3">
+                  {segments.map((segment, idx) => {
+                    if (segment.type === 'a2ui') {
+                      return <A2UISurface key={idx} payload={segment.content} isMessageRunning={isLoading} />;
+                    }
+                    if (
+                      segment.type === 'financial_table' &&
+                      segment.ticker &&
+                      segment.startYear &&
+                      segment.endYear
+                    ) {
+                      return (
+                        <FinancialInlineTable
+                          key={idx}
+                          ticker={segment.ticker}
+                          startYear={segment.startYear}
+                          endYear={segment.endYear}
+                        />
+                      );
+                    }
+                    return (
+                      <div
+                        key={idx}
+                        className={`markdown-content max-w-none text-sm ${
+                          isAgent ? 'text-slate-200' : 'text-white'
+                        }`}
+                        dangerouslySetInnerHTML={renderMarkdown(segment.content)}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
         })}
+
 
         {isLoading && (
           <div className="flex items-start gap-3 max-w-3xl mr-auto">

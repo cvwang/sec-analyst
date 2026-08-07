@@ -123,6 +123,125 @@ def delete_session(session_id: str):
     return {"status": "SUCCESS", "message": f"Session '{session_id}' deleted."}
 
 
+def _get_metrics_for_year(ticker: str, year: int) -> dict:
+    from agent.rag.bigquery_store import BigQueryFinancialStore
+
+    ticker_u = ticker.strip().upper()
+    yr_i = int(year)
+
+    store = BigQueryFinancialStore()
+    rec = store.query_metrics(ticker=ticker_u, fiscal_year=yr_i)
+    if rec:
+        rev = rec.revenue * 1e6 if rec.revenue < 1e6 else rec.revenue
+        op = rec.operating_income * 1e6 if abs(rec.operating_income) < 1e6 else rec.operating_income
+        ni = rec.net_income * 1e6 if abs(rec.net_income) < 1e6 else rec.net_income
+        return {"revenue": rev, "operating_income": op, "net_income": ni}
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"No financial metrics found in GCP BigQuery for ticker {ticker_u} FY{yr_i}.",
+    )
+
+
+@app.get("/api/v1/metrics")
+@app.get("/api/metrics")
+def get_financial_metrics(ticker: str, start_year: str, end_year: str):
+    """Calculates deterministic start/end period financial metrics and YoY variances for charts and tables."""
+    try:
+        s_yr = int(start_year)
+        e_yr = int(end_year)
+        ticker_clean = ticker.strip().upper()
+
+        start_m = _get_metrics_for_year(ticker_clean, s_yr)
+        end_m = _get_metrics_for_year(ticker_clean, e_yr)
+
+        start_rev = start_m["revenue"]
+        start_op = start_m["operating_income"]
+        start_ni = start_m["net_income"]
+        start_margin = round((start_op / start_rev) * 100.0, 2) if start_rev > 0 else 0.0
+
+        end_rev = end_m["revenue"]
+        end_op = end_m["operating_income"]
+        end_ni = end_m["net_income"]
+        end_margin = round((end_op / end_rev) * 100.0, 2) if end_rev > 0 else 0.0
+
+        rev_change_pct = round(((end_rev - start_rev) / abs(start_rev)) * 100.0, 2) if start_rev != 0 else 0.0
+        op_change_pct = round(((end_op - start_op) / abs(start_op)) * 100.0, 2) if start_op != 0 else 0.0
+        ni_change_pct = round(((end_ni - start_ni) / abs(start_ni)) * 100.0, 2) if start_ni != 0 else 0.0
+        margin_change_bps = round((end_margin - start_margin) * 100.0, 1)
+
+        return {
+            "ticker": ticker_clean,
+            "start_year": str(start_year),
+            "end_year": str(end_year),
+            "metrics": {
+                "start_period": {
+                    "revenue": start_rev,
+                    "operating_income": start_op,
+                    "net_income": start_ni,
+                    "operating_margin": start_margin,
+                },
+                "end_period": {
+                    "revenue": end_rev,
+                    "operating_income": end_op,
+                    "net_income": end_ni,
+                    "operating_margin": end_margin,
+                },
+                "variances": {
+                    "revenue_yoy_change_percent": rev_change_pct,
+                    "operating_income_yoy_change_percent": op_change_pct,
+                    "net_income_yoy_change_percent": ni_change_pct,
+                    "operating_margin_yoy_change_bps": margin_change_bps,
+                },
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to calculate metrics: {str(e)}")
+
+
+@app.get("/api/v1/peer_metrics")
+@app.get("/api/peer_metrics")
+def get_peer_metrics(ticker: str, peer_ticker: str, year: str):
+    """Calculates side-by-side financial metrics for two companies in a specific fiscal year."""
+    try:
+        yr_i = int(year)
+        t1_u = ticker.strip().upper()
+        t2_u = peer_ticker.strip().upper()
+
+        m1 = _get_metrics_for_year(t1_u, yr_i)
+        m2 = _get_metrics_for_year(t2_u, yr_i)
+
+        rev1, rev2 = m1["revenue"], m2["revenue"]
+        op1, op2 = m1["operating_income"], m2["operating_income"]
+        ni1, ni2 = m1["net_income"], m2["net_income"]
+
+        margin1 = round((op1 / rev1) * 100.0, 2) if rev1 else 0.0
+        margin2 = round((op2 / rev2) * 100.0, 2) if rev2 else 0.0
+
+        return {
+            "ticker": t1_u,
+            "peer_ticker": t2_u,
+            "year": str(yr_i),
+            "primary": {
+                "ticker": t1_u,
+                "revenue": rev1,
+                "operating_income": op1,
+                "net_income": ni1,
+                "operating_margin": margin1,
+            },
+            "peer": {
+                "ticker": t2_u,
+                "revenue": rev2,
+                "operating_income": op2,
+                "net_income": ni2,
+                "operating_margin": margin2,
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch peer metrics: {str(e)}")
+
+
+
 
 @app.post("/api/v1/analyze")
 def analyze_financials(request: AnalysisApiRequest):

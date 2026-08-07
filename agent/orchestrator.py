@@ -18,7 +18,7 @@ from agent.config import settings
 from agent.constitution import SYSTEM_CONSTITUTION
 from agent.tools.calculation_engine import calculate_financial_variance_tool
 from agent.rag.bigquery_store import query_bigquery_financial_metrics_tool
-from agent.rag.sec_corpus import reset_grounded_chunks, get_grounded_chunks, annotate_grounded_highlights_with_llm
+from agent.rag.sec_corpus import reset_grounded_chunks, get_grounded_chunks, annotate_grounded_highlights_with_llm, search_sec_filing_chunks_tool
 from agent.subagents.search_subagent import search_tool
 from agent.memory.session_store import PersistentSessionStore
 from agent.observability.logging_config import log_tool_execution
@@ -221,7 +221,8 @@ class FinancialAnalystAgent:
 {user_q_str}
 
 INSTRUCTIONS:
-Directly answer the user prompt above by dynamically invoking your tools (query_bigquery_financial_metrics_tool, search_tool, calculate_financial_variance_tool) as needed.
+1. Directly answer the user prompt above by dynamically invoking your tools (query_bigquery_financial_metrics_tool, search_tool, calculate_financial_variance_tool) as needed.
+2. Determine dynamically if visual UI components (charts, metrics, tables) add value for this response. If visual representation is helpful, include an ```a2ui JSON block using supported catalog components. If visuals are not appropriate (e.g. general disclosures, policy questions, or unavailable data), respond purely with grounded text and citations.
 """
 
         log_tool_execution("adk_runner_execution", "intent", {"model": self.reasoning_model, "prompt": user_prompt})
@@ -230,9 +231,18 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
         captured_tool_result = None
         async def _run_runner():
             nonlocal captured_tool_result
-            session = await self.session_service.create_session(
-                app_name="sec_analyst", user_id="analyst_user"
-            )
+            try:
+                session = await self.session_service.get_session(
+                    app_name="sec_analyst", user_id="analyst_user", session_id=session_id
+                )
+            except Exception:
+                session = None
+
+            if not session:
+                session = await self.session_service.create_session(
+                    app_name="sec_analyst", user_id="analyst_user", session_id=session_id
+                )
+
             content = types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
             final_text = ""
             async for event in self.runner.run_async(
@@ -302,9 +312,9 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
 
         citations = [c["citation"] for c in grounded_chunks if c.get("citation")]
 
-        # Extract tickers & fiscal years dynamically from grounded RAG chunks, tool outputs, and narrative citations
+        # Extract tickers & fiscal years dynamically from user prompt, grounded RAG chunks, tool outputs, and citations
         tickers = []
-        years = []
+        years = [int(y) for y in re.findall(r'\b(202[0-9])\b', user_prompt)]
 
         # 1. From grounded RAG chunks
         for c in grounded_chunks:
@@ -528,16 +538,25 @@ class RootOrchestrator:
             raise ValueError("No query prompt provided.")
 
         try:
-            # 1. Retrieve persistent session history and construct recent context summary
+            # 1. Retrieve persistent session history and construct recent context summary with target company propagation
             raw_history = self.session_store.get_session_history(session_id)
             history_summary = ""
+            recent_ticker = ""
             if raw_history:
-                turn_lines = [
-                    f"User: {t.get('user_query', '')}\nAgent: {t.get('agent_response', '')[:300]}"
-                    for t in raw_history[-3:]
-                    if isinstance(t, dict)
-                ]
+                turn_lines = []
+                for t in raw_history[-4:]:
+                    if isinstance(t, dict):
+                        u_q = t.get("user_query", "")
+                        a_r = t.get("agent_response", "")[:300]
+                        turn_lines.append(f"User: {u_q}\nAgent: {a_r}")
+                        last_resp = t.get("metadata", {}).get("last_response", {})
+                        past_tk = last_resp.get("ticker")
+                        if past_tk and past_tk != "SEC":
+                            recent_ticker = past_tk
+
                 history_summary = "\n".join(turn_lines)
+                if recent_ticker:
+                    history_summary += f"\nACTIVE CONVERSATION CONTEXT: The primary target company currently discussed in this thread is '{recent_ticker}'. If the user prompt is a follow-up question without an explicit ticker (e.g. 'company risks', 'operating margin', 'revenue'), assume the target company is '{recent_ticker}'."
 
             # 2. Run analysis directly using ADK FinancialAnalystAgent and Runner
             analysis_res = self.analyst_agent.run_analysis(
@@ -556,7 +575,7 @@ class RootOrchestrator:
                 export_res = export_financial_report(export_req, human_approved=human_approved_export)
                 export_status_dict = export_res.model_dump()
 
-            if analysis_res.get("is_success"):
+            if analysis_res.get("narrative"):
                 # 3. Save turn to persistent session store with full response payload metadata
                 self.session_store.save_session_turn(
                     session_id=session_id,
