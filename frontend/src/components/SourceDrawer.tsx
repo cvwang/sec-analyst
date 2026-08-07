@@ -16,12 +16,41 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse, active
   const textChunks = lastResponse?.hybrid_search_result?.text_chunks || [];
   const derivedTicker = lastResponse?.ticker || (lastResponse?.tickers && lastResponse.tickers.length > 0 ? lastResponse.tickers[0] : 'SEC');
 
-  // Auto-scroll and highlight when a source citation badge is clicked in chat narrative
-  useEffect(() => {
-    if (!activeSourceQuery || textChunks.length === 0) return;
+  // Group and merge chunks from the same document section into a single unified context block per source file
+  const consolidatedChunks = React.useMemo(() => {
+    if (!textChunks || textChunks.length === 0) return [];
 
-    const query = activeSourceQuery.toLowerCase();
-    let matchIdx = textChunks.findIndex((chunk) => {
+    const map = new Map<string, typeof textChunks[0]>();
+    for (const chunk of textChunks) {
+      const key = chunk.gcs_uri || `${chunk.company_name}_${chunk.fiscal_year}_${chunk.section}`;
+      if (map.has(key)) {
+        const existing = { ...map.get(key)! };
+        if (chunk.content && !existing.content.includes(chunk.content)) {
+          existing.content = `${existing.content}\n\n${chunk.content}`;
+        }
+        if (
+          chunk.highlight_excerpt &&
+          existing.highlight_excerpt &&
+          !existing.highlight_excerpt.includes(chunk.highlight_excerpt)
+        ) {
+          existing.highlight_excerpt = `${existing.highlight_excerpt}\n\n${chunk.highlight_excerpt}`;
+        }
+        map.set(key, existing);
+      } else {
+        map.set(key, { ...chunk });
+      }
+    }
+    return Array.from(map.values());
+  }, [textChunks]);
+
+  // Auto-scroll and highlight when a source citation badge is clicked in chat stream
+  useEffect(() => {
+    if (!activeSourceQuery || consolidatedChunks.length === 0) return;
+
+    const query = activeSourceQuery.toLowerCase().trim();
+
+    // 1. Match GCS URI, citation name, or company/year metadata
+    let matchIdx = consolidatedChunks.findIndex((chunk) => {
       if (chunk.gcs_uri && query.includes(chunk.gcs_uri.toLowerCase())) return true;
       if (chunk.citation && query.includes(chunk.citation.toLowerCase())) return true;
       if (chunk.company_name && query.includes(chunk.company_name.toLowerCase()) &&
@@ -29,8 +58,16 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse, active
       return false;
     });
 
+    // 2. Direct text content inclusion match
     if (matchIdx === -1) {
-      matchIdx = textChunks.findIndex((chunk) =>
+      matchIdx = consolidatedChunks.findIndex((chunk) =>
+        chunk.content && (chunk.content.toLowerCase().includes(query) || query.includes(chunk.content.toLowerCase()))
+      );
+    }
+
+    // 3. Fallback company name match
+    if (matchIdx === -1) {
+      matchIdx = consolidatedChunks.findIndex((chunk) =>
         chunk.company_name && query.includes(chunk.company_name.toLowerCase())
       );
     }
@@ -46,10 +83,10 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse, active
 
       const timer = setTimeout(() => {
         setHighlightedIdx(null);
-      }, 3000);
+      }, 3500);
       return () => clearTimeout(timer);
     }
-  }, [activeSourceQuery, textChunks]);
+  }, [activeSourceQuery, consolidatedChunks]);
 
   const toggleExpand = (idx: number) => {
     setExpandedChunks((prev) => ({ ...prev, [idx]: !prev[idx] }));
@@ -89,13 +126,13 @@ export const SourceDrawer: React.FC<SourceDrawerProps> = ({ lastResponse, active
           <h2 className="font-heading font-semibold text-sm text-slate-200">Grounded Context Drawer</h2>
         </div>
         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-          {textChunks.length} {textChunks.length === 1 ? 'Source Cited' : 'Sources Cited'}
+          {consolidatedChunks.length} {consolidatedChunks.length === 1 ? 'Source Cited' : 'Sources Cited'}
         </span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {textChunks.length > 0 ? (
-          textChunks.map((chunk, idx) => {
+        {consolidatedChunks.length > 0 ? (
+          consolidatedChunks.map((chunk, idx) => {
             const isExpanded = !!expandedChunks[idx];
             const isHighlighted = highlightedIdx === idx;
             const textToDisplay = isExpanded ? chunk.content : (chunk.highlight_excerpt || chunk.content);

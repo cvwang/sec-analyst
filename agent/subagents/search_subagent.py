@@ -16,7 +16,7 @@ search_agent = LlmAgent(
     instruction=(
         "You are a search specialist for SEC 10-K disclosures. Given a search query, ticker, or requested years, "
         "use search_sec_filing_chunks_tool to retrieve relevant filing chunks and return a concise, accurate, "
-        "sourced response including exact metrics and GCS URIs formatted strictly as `(Source: <Ticker> <Year> 10-K, <gcs_uri>)`."
+        "sourced response including exact metrics and GCS URIs. Attach an explicit inline citation formatted strictly as `(Source: <Ticker> <Year> 10-K <Section>, <gcs_uri>)` to EACH bullet point or key disclosure sentence."
     ),
     tools=[search_sec_filing_chunks_tool],
 )

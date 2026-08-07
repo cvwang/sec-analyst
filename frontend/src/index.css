@@ -242,4 +242,19 @@ body {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.markdown-content li,
+.markdown-content p {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: -4px;
+  margin-right: -4px;
+  transition: background-color 0.15s ease;
+}
+
+.markdown-content li:hover,
+.markdown-content p:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
 

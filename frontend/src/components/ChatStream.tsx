@@ -109,12 +109,23 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
   };
 
   const handleChatContainerClick = (e: React.MouseEvent) => {
-    const target = (e.target as HTMLElement).closest('.source-citation-badge') as HTMLElement;
-    if (target) {
+    const target = e.target as HTMLElement;
+    const badge = target.closest('.source-citation-badge') as HTMLElement;
+    if (badge) {
       e.stopPropagation();
-      const query = target.getAttribute('data-source-query') || target.innerText;
+      const query = badge.getAttribute('data-source-query') || badge.innerText;
       if (query) {
         onSelectSourceQuery?.(query);
+      }
+      return;
+    }
+
+    // Generic narrative element click (bullet point <li>, paragraph <p>, table row <tr>)
+    const container = target.closest('.markdown-content li, .markdown-content p, .markdown-content tr') as HTMLElement;
+    if (container) {
+      const text = container.innerText.trim();
+      if (text && text.length > 8) {
+        onSelectSourceQuery?.(text);
       }
     }
   };

@@ -7,7 +7,7 @@ import uuid
 import asyncio
 import concurrent.futures
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from google.genai import types
 from google.adk.agents.llm_agent import LlmAgent
@@ -152,7 +152,26 @@ def export_financial_report(request: ExportReportRequest, human_approved: bool =
         payload=result.model_dump(),
         status="SUCCESS",
     )
-    return result
+def consolidate_grounded_chunks(chunks: List[dict]) -> List[dict]:
+    """Groups passages retrieved from the same GCS document section into a single unified context chunk."""
+    if not chunks:
+        return []
+
+    merged_map: Dict[str, dict] = {}
+    for c in chunks:
+        key = c.get("gcs_uri") or f"{c.get('ticker')}_{c.get('fiscal_year')}_{c.get('section')}"
+        if key in merged_map:
+            existing = merged_map[key]
+            new_content = c.get("content", "")
+            if new_content and new_content not in existing["content"]:
+                existing["content"] = f"{existing['content']}\n\n{new_content}"
+            new_excerpt = c.get("highlight_excerpt", "")
+            if new_excerpt and existing.get("highlight_excerpt") and new_excerpt not in existing.get("highlight_excerpt", ""):
+                existing["highlight_excerpt"] = f"{existing['highlight_excerpt']}\n\n{new_excerpt}"
+        else:
+            merged_map[key] = dict(c)
+
+    return list(merged_map.values())
 
 
 class FinancialAnalystAgent:
@@ -277,7 +296,7 @@ Directly answer the user prompt above by dynamically invoking your tools (query_
                     seen_cited_gcs.add(g_uri)
                     cited_chunks.append(chunk)
 
-        grounded_chunks = cited_chunks if cited_chunks else unique_chunks
+        grounded_chunks = consolidate_grounded_chunks(cited_chunks if cited_chunks else unique_chunks)
         if narrative and grounded_chunks:
             grounded_chunks = annotate_grounded_highlights_with_llm(grounded_chunks, narrative)
 

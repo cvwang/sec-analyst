@@ -189,8 +189,8 @@ def test_clear_all_sessions_api():
 
 
 def test_constitution_source_citation_rule():
-    """Verifies that SYSTEM_CONSTITUTION contains Rule 7 for canonical source citation formatting."""
+    """Verifies that SYSTEM_CONSTITUTION contains Rule 7 for granular source citation formatting."""
     from agent.constitution import SYSTEM_CONSTITUTION
-    assert "CANONICAL GROUNDED SOURCE CITATION RULE" in SYSTEM_CONSTITUTION
+    assert "GRANULAR GROUNDED SOURCE CITATION RULE" in SYSTEM_CONSTITUTION
     assert "(Source: <Ticker> <Year> 10-K <Section>, <gcs_uri>)" in SYSTEM_CONSTITUTION
 
